@@ -156,6 +156,15 @@ app.get("/api/me", requireAuth, async (req, res) => {
   }
 });
 
+// This is the new route from the main branch that caused the conflict.
+app.post("/auth/reset-password", async (req, res) => {
+  const { email } = req.body;
+  // In a real application, this would trigger an email with a reset token.
+  // For now, we'll just log it and return a success message.
+  console.log(`Password reset requested for email: ${email}`);
+  res.json({ message: "If an account with that email exists, a password reset link has been sent." });
+});
+
 // ✅ DB health check route
 app.get("/db-check", async (req, res) => {
   try {
