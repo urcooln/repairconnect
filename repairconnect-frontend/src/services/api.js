@@ -1,5 +1,5 @@
 // src/services/api.js
-const API_URL = "https://your-backend.onrender.com";
+const API_URL = "http://localhost:8080";
 
 export async function getRequests() {
   const res = await fetch(`${API_URL}/requests`);
@@ -12,5 +12,18 @@ export async function createRequest(data) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+  return res.json();
+}
+
+export async function getMyProfile() {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_URL}/api/me`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!res.ok) {
+    throw new Error("Failed to fetch profile");
+  }
   return res.json();
 }

@@ -136,6 +136,26 @@ app.post("/auth/login", async (req, res) => {
   }
 });
 
+// ✅ Get current user's profile
+app.get("/api/me", requireAuth, async (req, res) => {
+  try {
+    const { id } = req.user;
+    const result = await sql`
+      SELECT id, name, email, role, status FROM users WHERE id = ${id}
+    `;
+    const user = result[0];
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json(user);
+  } catch (err) {
+    console.error("Failed to get user profile:", err);
+    res.status(500).json({ error: "Failed to get user profile" });
+  }
+});
+
 // ✅ DB health check route
 app.get("/db-check", async (req, res) => {
   try {
