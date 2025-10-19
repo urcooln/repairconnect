@@ -1,19 +1,25 @@
 import { Routes, Route } from "react-router-dom";
 import Home from "./pages/Home.js";
+import Login from "./pages/Login.js";
+import Register from "./pages/Register.js";
 import CustomerDashboard from "./pages/CustomerDashboard.js";
 import ProviderDashboard from "./pages/ProviderDashboard.js";
 import AdminDashboard from "./pages/AdminDashboard.js";
+import AdminLogin from "./pages/AdminLogin.js";
 import ProtectedRoute from "./components/ProtectedRoute.jsx"; // ✅ import gatekeeper
 
 function App() {
   return (
     <Routes>
-      {/* Public route */}
+      {/* Public routes */}
       <Route path="/" element={<Home />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/admin/login" element={<AdminLogin />} />
 
       {/* Customer-only */}
       <Route
-        path="/customer/dashboard"
+        path="/dashboard"
         element={
           <ProtectedRoute allowedRoles={["customer"]}>
             <CustomerDashboard />
