@@ -7,12 +7,13 @@ import bcrypt from "bcrypt";
 import sql from "./db.js"; // ✅ Supabase-style import
 
 const app = express();
+const PORT = process.env.PORT || 8081;
+const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 // pull values from .env
-const { ADMIN_EMAIL, ADMIN_PASSWORD, JWT_SECRET } = process.env;
-const PORT = process.env.PORT || 8080;
-
-app.use(cors({ origin: "http://localhost:3000" }));
+app.use(cors());
 app.use(express.json());
 
 // ✅ Public root route (for testing)
@@ -58,7 +59,20 @@ app.post("/auth/register", async (req, res) => {
   const { name, email, password, role } = req.body;
   console.log("REGISTER payload:", req.body);
 
+  if (!name || !email || !password || !role) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
+
   try {
+    // Check if email already exists
+    const existing = await sql`
+      SELECT id FROM users WHERE email = ${email}
+    `;
+
+    if (existing.length > 0) {
+      return res.status(400).json({ error: "Email already registered" });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Set initial status for providers
@@ -73,7 +87,17 @@ app.post("/auth/register", async (req, res) => {
     res.json({ message: "User registered", user: result[0] });
   } catch (err) {
     console.error("Registration failed:", err);
-    res.status(500).json({ error: "Registration failed" });
+    
+    // Check for specific database errors
+    if (err.code === '23505') { // Unique violation
+      return res.status(400).json({ error: "Email already registered" });
+    }
+    
+    if (err.code === '23502') { // Not null violation
+      return res.status(400).json({ error: "All fields are required" });
+    }
+    
+    res.status(500).json({ error: err.message || "Registration failed" });
   }
 });
 
@@ -341,5 +365,49 @@ app.post("/admin/users/:id/activate", async (req, res) => {
   }
 });
 
-// ✅ Start the server
-app.listen(PORT, () => console.log(`🚀 API running on http://localhost:${PORT}`));
+// ✅ Provider routes
+app.get("/provider/profile", requireAuth, async (req, res) => {
+  try {
+    const [provider] = await sql`
+      SELECT id, name, email, role
+      FROM users
+      WHERE id = ${req.user.id} AND role = 'provider'
+    `;
+
+    if (!provider) {
+      return res.status(404).json({ error: "Provider not found" });
+    }
+
+    res.json({
+      firstName: provider.name.split(' ')[0],
+      lastName: provider.name.split(' ')[1] || '',
+      email: provider.email,
+      roles: [provider.role],
+      completedJobs: 0,
+      newMessages: 0
+    });
+  } catch (err) {
+    console.error("Error fetching provider profile:", err);
+    res.status(500).json({ error: "Failed to fetch provider profile" });
+  }
+});
+
+// Test database connection before starting server
+async function startServer() {
+  try {
+    // Test the database connection
+    console.log('Testing database connection...');
+    const result = await sql`SELECT NOW()`;
+    console.log('Database connected successfully:', result[0].now);
+
+    // Start the server
+    app.listen(PORT, () => {
+      console.log(`🚀 API running on http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  }
+}
+
+startServer();

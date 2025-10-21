@@ -1,8 +1,9 @@
 // repairconnect-backend/db.js
-import postgres from 'postgres'
+import postgres from 'postgres';
+import dotenv from 'dotenv';
 
-const connectionString = process.env.DATABASE_URL
-const sql = postgres(connectionString, { ssl: 'require' })
+dotenv.config();
 
-export default sql
+const sql = postgres(process.env.DATABASE_URL);
 
+export default sql;

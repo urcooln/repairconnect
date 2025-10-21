@@ -1,7 +1,21 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const API_BASE = "http://localhost:8080"; // backend URL
+const API_BASE = "http://localhost:8081"; // test backend URL
+
+// For debugging
+const testConnection = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/test`);
+    const data = await res.json();
+    console.log('Test connection successful:', data);
+  } catch (error) {
+    console.error('Test connection failed:', error);
+  }
+};
+
+// Test the connection when the component loads
+setTimeout(testConnection, 1000);
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -24,10 +38,10 @@ export default function Login() {
       if (!res.ok) throw new Error(data.error || "Login failed");
 
       // Save token
-      localStorage.setItem("rc_token", data.token);
+      localStorage.setItem("token", data.token);
 
-      // TODO: decode token and send to right dashboard
-      navigate("/");
+      // Navigate to provider dashboard
+      navigate("/provider/dashboard");
     } catch (e) {
       setError(e.message);
     }
