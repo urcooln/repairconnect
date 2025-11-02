@@ -75,13 +75,10 @@ app.post("/auth/register", async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Set initial status for providers
-    const status = role === "provider" ? "pending" : "active";
-
     const result = await sql`
-      INSERT INTO users (name, email, password_hash, role, status)
-      VALUES (${name}, ${email}, ${hashedPassword}, ${role}, ${status})
-      RETURNING id, email, role, status
+      INSERT INTO users (name, email, password_hash, role)
+      VALUES (${name}, ${email}, ${hashedPassword}, ${role})
+      RETURNING id, email, role
     `;
 
     res.json({ message: "User registered", user: result[0] });
@@ -252,33 +249,6 @@ app.delete("/admin/users/:id", requireAuth, requireAdmin, async (req, res) => {
   } catch (err) {
     console.error("Failed to delete user:", err);
     res.status(500).json({ error: "Failed to delete user" });
-  }
-});
-
-// ✅ Approve a provider
-app.put("/admin/users/:id/approve", requireAuth, requireAdmin, async (req, res) => {
-  const userId = Number.parseInt(req.params.id, 10);
-
-  if (Number.isNaN(userId)) {
-    return res.status(400).json({ error: "Invalid user id" });
-  }
-
-  try {
-    const approved = await sql`
-      UPDATE users
-      SET status = 'active'
-      WHERE id = ${userId} AND role = 'provider'
-      RETURNING id, status
-    `;
-
-    if (approved.length === 0) {
-      return res.status(404).json({ error: "Provider not found or user is not a provider" });
-    }
-
-    res.json({ message: "Provider approved", user: approved[0] });
-  } catch (err) {
-    console.error("Failed to approve provider:", err);
-    res.status(500).json({ error: "Failed to approve provider" });
   }
 });
 

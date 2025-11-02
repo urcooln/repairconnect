@@ -1,13 +1,15 @@
 // src/services/api.js
 const API_URL = "http://localhost:8081"; // Test backend server port
 
-const getHeaders = () => {
+// Helper to attach auth headers
+function getHeaders() {
   const token = localStorage.getItem('token');
+  console.log('Sending token:', token); // ✅ Add this line
   return {
     'Content-Type': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    Authorization: `Bearer ${token}`
   };
-};
+}
 
 export async function getRequests() {
   const res = await fetch(`${API_URL}/requests`, {

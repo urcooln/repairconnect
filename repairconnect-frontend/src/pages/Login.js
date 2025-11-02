@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const API_BASE = "http://localhost:8081"; // test backend URL
+const API_BASE = "http://localhost:8081"; 
 
 // For debugging
 const testConnection = async () => {
   try {
-    const res = await fetch(`${API_BASE}/test`);
+    const res = await fetch(`${API_BASE}/db-check`);
     const data = await res.json();
     console.log('Test connection successful:', data);
   } catch (error) {

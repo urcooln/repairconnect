@@ -1,6 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import styles from '../pages/ProviderDashboard.module.css';
+import { useNavigate } from 'react-router-dom';
+import styles from '../pages/ProviderDashboard.module.css'; 
+
+const API_BASE = "http://localhost:8081"; // Backend URL
 
 const AVAILABLE_ROLES = [
   'Plumber',
@@ -16,9 +19,35 @@ const AVAILABLE_ROLES = [
 ];
 
 const ProfileSection = ({ provider, onSave }) => {
+  const navigate = useNavigate();
+
   const [isEditing, setIsEditing] = useState(false);
   const [selectedRoles, setSelectedRoles] = useState(provider.roles || []);
   const [photo, setPhoto] = useState(provider.photoUrl);
+
+  const handleLogout = async () => {
+    const payload = {
+      email: provider.email,
+      photoUrl: photo,
+      roles: selectedRoles
+    };
+
+    try {
+      await fetch(`${API_BASE}/saveProfile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      localStorage.clear();
+      sessionStorage.clear();
+      navigate('/');
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  };
 
   const onDrop = useCallback((acceptedFiles) => {
     const file = acceptedFiles[0];
@@ -82,6 +111,12 @@ const ProfileSection = ({ provider, onSave }) => {
           onClick={() => isEditing ? handleSave() : setIsEditing(true)}
         >
           {isEditing ? 'Save Changes' : 'Edit Profile'}
+        </button>
+        <button
+          className={`${styles.editButton} bg-red-500 hover:bg-red-600 text-white ml-4`}
+          onClick={handleLogout}
+        >
+          Logout
         </button>
       </div>
 
