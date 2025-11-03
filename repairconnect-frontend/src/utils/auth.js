@@ -1,4 +1,4 @@
-import jwt_decode from 'jwt-decode';
+import jwtDecode from 'jwt-decode';
 
 const TOKEN_KEY = 'token';
 
@@ -19,7 +19,7 @@ export const isAuthenticated = () => {
   if (!token) return false;
 
   try {
-    const decoded = jwt_decode(token);
+    const decoded = jwtDecode(token);
     const currentTime = Date.now() / 1000;
     return decoded.exp > currentTime;
   } catch (error) {
@@ -33,7 +33,7 @@ export const getUserRole = () => {
   if (!token) return null;
 
   try {
-    const decoded = jwt_decode(token);
+    const decoded = jwtDecode(token);
     return decoded.role;
   } catch (error) {
     console.error('Error getting user role:', error);
@@ -47,7 +47,7 @@ export const getUserData = () => {
   if (!token) return null;
 
   try {
-    const decoded = jwt_decode(token);
+    const decoded = jwtDecode(token);
     console.log('Decoded user data:', decoded);
     return decoded;
   } catch (error) {

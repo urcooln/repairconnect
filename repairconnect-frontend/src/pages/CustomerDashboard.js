@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { jwtDecode } from "jwt-decode";
+import  jwtDecode from "jwt-decode";
 
 const API_BASE = "http://localhost:8080";
 
