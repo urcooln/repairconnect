@@ -28,7 +28,7 @@ npm install
 npm start
 ```
 
-Backend runs on http://localhost:8080
+Backend runs on http://localhost:8081
 
 Frontend runs on http://localhost:3000
 
