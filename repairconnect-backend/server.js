@@ -7,14 +7,13 @@ import bcrypt from "bcrypt";
 import sql from "./db.js"; // ✅ Supabase-style import
 
 const app = express();
-const PORT = process.env.PORT || 8081;
-const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 // pull values from .env
-app.use(cors());
-app.use(express.json({ limit: "10mb" }));
+const { ADMIN_EMAIL, ADMIN_PASSWORD, JWT_SECRET } = process.env;
+const PORT = process.env.PORT || 8080;
+
+app.use(cors({ origin: "http://localhost:3000" }));
+app.use(express.json());
 
 // ✅ Public root route (for testing)
 app.get("/", (req, res) => {
@@ -59,42 +58,22 @@ app.post("/auth/register", async (req, res) => {
   const { name, email, password, role } = req.body;
   console.log("REGISTER payload:", req.body);
 
-  if (!name || !email || !password || !role) {
-    return res.status(400).json({ error: "All fields are required" });
-  }
-
   try {
-    // Check if email already exists
-    const existing = await sql`
-      SELECT id FROM users WHERE email = ${email}
-    `;
-
-    if (existing.length > 0) {
-      return res.status(400).json({ error: "Email already registered" });
-    }
-
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Set initial status for providers
+    const status = role === "provider" ? "pending" : "active";
+
     const result = await sql`
-      INSERT INTO users (name, email, password_hash, role)
-      VALUES (${name}, ${email}, ${hashedPassword}, ${role})
-      RETURNING id, email, role
+      INSERT INTO users (name, email, password_hash, role, status)
+      VALUES (${name}, ${email}, ${hashedPassword}, ${role}, ${status})
+      RETURNING id, email, role, status
     `;
 
     res.json({ message: "User registered", user: result[0] });
   } catch (err) {
     console.error("Registration failed:", err);
-    
-    // Check for specific database errors
-    if (err.code === '23505') { // Unique violation
-      return res.status(400).json({ error: "Email already registered" });
-    }
-    
-    if (err.code === '23502') { // Not null violation
-      return res.status(400).json({ error: "All fields are required" });
-    }
-    
-    res.status(500).json({ error: err.message || "Registration failed" });
+    res.status(500).json({ error: "Registration failed" });
   }
 });
 
@@ -103,16 +82,6 @@ app.post("/auth/login", async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // Allow admin login through the shared endpoint using env credentials
-    if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-      const token = jwt.sign(
-        { email, role: "admin" },
-        JWT_SECRET,
-        { expiresIn: "2h" }
-      );
-      return res.json({ token });
-    }
-
     const result = await sql`
       SELECT * FROM users WHERE email = ${email}
     `;
@@ -164,36 +133,6 @@ app.post("/auth/login", async (req, res) => {
   } catch (err) {
     console.error("Login failed:", err);
     res.status(500).json({ error: "Login failed" });
-  }
-});
-
-// ✅ Password Reset
-app.post("/auth/reset-password", async (req, res) => {
-  const { email, newPassword } = req.body || {};
-
-  if (!email || !newPassword) {
-    return res.status(400).json({ error: "Email and newPassword are required." });
-  }
-
-  try {
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // NOTE: your DB column is password_hash based on server.js register/login logic
-    const result = await sql`
-      UPDATE users
-      SET password_hash = ${hashedPassword}
-      WHERE email = ${email}
-      RETURNING id, email;
-    `;
-
-    if (!result.length) {
-      return res.status(404).json({ error: "No user found with that email." });
-    }
-
-    res.json({ message: "Password successfully reset." });
-  } catch (err) {
-    console.error("Error resetting password:", err);
-    res.status(500).json({ error: "Failed to reset password." });
   }
 });
 
@@ -259,6 +198,33 @@ app.delete("/admin/users/:id", requireAuth, requireAdmin, async (req, res) => {
   } catch (err) {
     console.error("Failed to delete user:", err);
     res.status(500).json({ error: "Failed to delete user" });
+  }
+});
+
+// ✅ Approve a provider
+app.put("/admin/users/:id/approve", requireAuth, requireAdmin, async (req, res) => {
+  const userId = Number.parseInt(req.params.id, 10);
+
+  if (Number.isNaN(userId)) {
+    return res.status(400).json({ error: "Invalid user id" });
+  }
+
+  try {
+    const approved = await sql`
+      UPDATE users
+      SET status = 'active'
+      WHERE id = ${userId} AND role = 'provider'
+      RETURNING id, status
+    `;
+
+    if (approved.length === 0) {
+      return res.status(404).json({ error: "Provider not found or user is not a provider" });
+    }
+
+    res.json({ message: "Provider approved", user: approved[0] });
+  } catch (err) {
+    console.error("Failed to approve provider:", err);
+    res.status(500).json({ error: "Failed to approve provider" });
   }
 });
 
@@ -345,222 +311,85 @@ app.post("/admin/users/:id/activate", async (req, res) => {
   }
 });
 
-let providerSchemaReadyPromise = null;
+// ✅ Create new service request
+app.post("/service-requests", requireAuth, async (req, res) => {
+  const { category, description, preferred_date } = req.body;
+  const customerId = req.user.id;
 
-async function ensureProviderSchema() {
-  if (!providerSchemaReadyPromise) {
-    providerSchemaReadyPromise = (async () => {
-      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS roles TEXT[]`;
-      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_url TEXT`;
-      await sql`
-        CREATE TABLE IF NOT EXISTS provider_profiles (
-          user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-          company_name TEXT,
-          skills TEXT,
-          hourly_rate NUMERIC(10,2),
-          bio TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `;
-    })().catch((err) => {
-      providerSchemaReadyPromise = null;
-      throw err;
+  if (!category || !description) {
+    return res.status(400).json({ 
+      error: "Category and description are required" 
     });
   }
 
-  return providerSchemaReadyPromise;
-}
-
-// ✅ Provider routes
-app.get("/provider/profile", requireAuth, async (req, res) => {
   try {
-    await ensureProviderSchema();
-
-    if (!req.user?.id) {
-      return res.status(400).json({ error: "Missing provider id" });
-    }
-
-    const [provider] = await sql`
-      SELECT 
-        u.id,
-        u.name,
-        u.email,
-        u.role,
-        u.roles,
-        u.photo_url,
-        pp.company_name,
-        pp.skills,
-        pp.hourly_rate,
-        pp.bio
-      FROM users u
-      LEFT JOIN provider_profiles pp ON pp.user_id = u.id
-      WHERE u.id = ${req.user.id} AND LOWER(u.role) = 'provider'
+    const result = await sql`
+      INSERT INTO service_requests (customer_id, category, description, preferred_date, status)
+      VALUES (${customerId}, ${category}, ${description}, ${preferred_date || null}, 'pending')
+      RETURNING *
     `;
 
-    if (!provider) {
-      return res.status(404).json({ error: "Provider not found" });
-    }
-
-    const [firstName = "", ...rest] = typeof provider.name === "string"
-      ? provider.name.trim().split(/\s+/)
-      : [""];
-    const lastName = rest.join(" ");
-
-    let parsedRoles = [];
-    if (Array.isArray(provider.roles)) {
-      parsedRoles = provider.roles;
-    } else if (typeof provider.roles === "string" && provider.roles.length > 0) {
-      parsedRoles = provider.roles.split(",").map((role) => role.trim());
-    }
-    if (parsedRoles.length === 0 && provider.role) {
-      parsedRoles = [provider.role];
-    }
-
-    let skills = [];
-    if (Array.isArray(provider.skills)) {
-      skills = provider.skills;
-    } else if (typeof provider.skills === "string" && provider.skills.length > 0) {
-      try {
-        skills = JSON.parse(provider.skills);
-      } catch {
-        skills = provider.skills.split(",").map((skill) => skill.trim());
-      }
-    }
-
-    res.json({
-      firstName,
-      lastName,
-      email: provider.email,
-      company: provider.company_name || "",
-      skills,
-      hourlyRate: provider.hourly_rate ? Number(provider.hourly_rate) : null,
-      roles: parsedRoles,
-      photoUrl: provider.photo_url || null,
-      bio: provider.bio || "",
-      completedJobs: 0,
-      newMessages: 0,
+    console.log(`✅ Service request created by user ${customerId}`);
+    res.status(201).json({
+      message: "Service request created successfully",
+      request: result[0]
     });
   } catch (err) {
-    console.error("Error fetching provider profile:", err);
-    res.status(500).json({ error: "Failed to fetch provider profile" });
+    console.error("Error creating service request:", err);
+    res.status(500).json({ error: "Failed to create service request" });
   }
 });
 
-app.put("/provider/profile", requireAuth, async (req, res) => {
+// ✅ Get all service requests for logged-in customer
+app.get("/service-requests/my-requests", requireAuth, async (req, res) => {
+  const customerId = req.user.id;
+
   try {
-    await ensureProviderSchema();
-
-    const { id } = req.user || {};
-
-    if (!id) {
-      return res.status(400).json({ error: "Missing provider id" });
-    }
-    const {
-      firstName,
-      lastName,
-      company,
-      skills = [],
-      hourlyRate,
-      roles = [],
-      photoUrl,
-      bio,
-    } = req.body || {};
-
-    const [existing] = await sql`
-      SELECT id, name, roles, photo_url
-      FROM users
-      WHERE id = ${id} AND LOWER(role) = 'provider'
+    const requests = await sql`
+      SELECT * FROM service_requests 
+      WHERE customer_id = ${customerId}
+      ORDER BY created_at DESC
     `;
 
-    if (!existing) {
-      return res.status(404).json({ error: "Provider not found" });
-    }
-
-    const fullNameParts = [firstName, lastName].map((part) =>
-      typeof part === "string" ? part.trim() : ""
-    );
-    const fullName = fullNameParts.filter(Boolean).join(" ") || existing.name;
-
-    const normalizedRoles = Array.isArray(roles)
-      ? roles.map((role) => role.trim()).filter(Boolean)
-      : Array.isArray(existing.roles)
-      ? existing.roles
-      : [];
-
-    const normalizedSkills = Array.isArray(skills)
-      ? skills.map((skill) => (typeof skill === "string" ? skill.trim() : "")).filter(Boolean)
-      : [];
-
-    const hourlyRateNumber =
-      typeof hourlyRate === "number"
-        ? hourlyRate
-        : typeof hourlyRate === "string"
-        ? Number.parseFloat(hourlyRate)
-        : null;
-    const safeHourlyRate = Number.isFinite(hourlyRateNumber) ? hourlyRateNumber : null;
-
-    const normalizedCompany =
-      typeof company === "string" ? company.trim() || null : company || null;
-    const normalizedBio =
-      typeof bio === "string" ? bio.trim() || null : bio || null;
-
-    await sql.begin(async (tx) => {
-      await tx`
-        UPDATE users
-        SET
-          name = ${fullName},
-          roles = ${normalizedRoles},
-          photo_url = ${photoUrl ?? existing.photo_url}
-        WHERE id = ${id} AND LOWER(role) = 'provider'
-      `;
-
-      await tx`
-        INSERT INTO provider_profiles (user_id, company_name, skills, hourly_rate, bio, updated_at)
-        VALUES (${id}, ${normalizedCompany}, ${JSON.stringify(normalizedSkills)}, ${safeHourlyRate}, ${normalizedBio}, NOW())
-        ON CONFLICT (user_id)
-        DO UPDATE SET
-          company_name = EXCLUDED.company_name,
-          skills = EXCLUDED.skills,
-          hourly_rate = EXCLUDED.hourly_rate,
-          bio = EXCLUDED.bio,
-          updated_at = NOW()
-      `;
-    });
-
-    res.json({
-      firstName: fullNameParts[0] || "",
-      lastName: fullNameParts.slice(1).join(" "),
-      company: normalizedCompany || "",
-      skills: normalizedSkills,
-      hourlyRate: safeHourlyRate,
-      roles: normalizedRoles,
-      photoUrl: photoUrl ?? existing.photo_url,
-      bio: normalizedBio || "",
-    });
+    res.json(requests);
   } catch (err) {
-    console.error("Failed to update provider profile:", err);
-    res.status(500).json({ error: "Failed to update provider profile" });
+    console.error("Error fetching service requests:", err);
+    res.status(500).json({ error: "Failed to fetch service requests" });
   }
 });
 
-// Test database connection before starting server
-async function startServer() {
-  try {
-    // Test the database connection
-    console.log('Testing database connection...');
-    await ensureProviderSchema();
-    const result = await sql`SELECT NOW()`;
-    console.log('Database connected successfully:', result[0].now);
+// ✅ Cancel service request
+app.delete("/service-requests/:id", requireAuth, async (req, res) => {
+  const requestId = Number.parseInt(req.params.id, 10);
+  const userId = req.user.id;
 
-    // Start the server
-    app.listen(PORT, () => {
-      console.log(`🚀 API running on http://localhost:${PORT}`);
+  if (Number.isNaN(requestId)) {
+    return res.status(400).json({ error: "Invalid request ID" });
+  }
+
+  try {
+    const result = await sql`
+      UPDATE service_requests
+      SET status = 'cancelled', updated_at = NOW()
+      WHERE id = ${requestId} AND customer_id = ${userId} AND status = 'pending'
+      RETURNING *
+    `;
+
+    if (result.length === 0) {
+      return res.status(404).json({ 
+        error: "Request not found or cannot be cancelled" 
+      });
+    }
+
+    res.json({
+      message: "Service request cancelled successfully",
+      request: result[0]
     });
   } catch (err) {
-    console.error('Failed to start server:', err);
-    process.exit(1);
+    console.error("Error cancelling service request:", err);
+    res.status(500).json({ error: "Failed to cancel service request" });
   }
-}
+});
 
-startServer();
+// ✅ Start the server
+app.listen(PORT, () => console.log(`🚀 API running on http://localhost:${PORT}`));
