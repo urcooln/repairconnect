@@ -15,3 +15,14 @@ CREATE TABLE IF NOT EXISTS users (
 -- Create indexes
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+
+-- Detailed provider profile information
+CREATE TABLE IF NOT EXISTS provider_profiles (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    company_name TEXT,
+    skills TEXT,
+    hourly_rate NUMERIC(10,2),
+    bio TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

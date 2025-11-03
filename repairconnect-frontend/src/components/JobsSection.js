@@ -17,7 +17,9 @@ const JobsSection = ({ jobs, providerRoles }) => {
         >
           All Jobs
         </button>
-        {providerRoles.map(role => (
+        {providerRoles
+          .filter(role => role && role.toLowerCase() !== 'provider')
+          .map(role => (
           <button
             key={role}
             className={`${styles.tab} ${selectedRole === role ? styles.active : ''}`}

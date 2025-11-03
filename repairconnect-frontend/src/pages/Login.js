@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import jwtDecode from "jwt-decode";
 
 const API_BASE = "http://localhost:8081"; 
 
@@ -37,11 +38,19 @@ export default function Login() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Login failed");
 
-      // Save token
       localStorage.setItem("token", data.token);
 
-      // Navigate to provider dashboard
-      navigate("/provider/dashboard");
+      const decoded = jwtDecode(data.token);
+
+      if (decoded.role === "provider") {
+        navigate("/provider/dashboard");
+      } else if (decoded.role === "customer") {
+        navigate("/customer/dashboard");
+      } else if (decoded.role === "admin") {
+        navigate("/admin/dashboard");
+      } else {
+        throw new Error("Invalid role");
+      }
     } catch (e) {
       setError(e.message);
     }

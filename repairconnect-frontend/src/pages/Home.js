@@ -63,6 +63,8 @@ function Home() {
             return navigate('/provider/dashboard');
           } else if (decoded.role === 'customer') {
             return navigate('/customer/dashboard');
+          } else if (decoded.role === 'admin') {
+            return navigate('/admin/dashboard');
           } else {
             throw new Error('Invalid role');
           }
@@ -73,11 +75,6 @@ function Home() {
         }
 >>>>>>> 295e417 (I changed the back end port for the Provider dashboard to '8081' due to communication conflicts to the front end. I also formatted the front end to display a sample of the provider dashboard featureing: User profile Photo handleing, role handleing, job listing, and a way to filter jobs by provider roles selected. As a reminder most of the front end page buttons arent built in the back end yet these changes are being pushed for demonstration purposes.)
 
-        if (decoded.role === "provider") {
-          return navigate("/provider/dashboard");
-        } else {
-          return navigate("/customer/dashboard");
-        }
       }
 
       throw new Error(data.error || "Login failed");

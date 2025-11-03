@@ -36,6 +36,10 @@ const ProviderDashboard = () => {
     lastName: '',
     email: '',
     roles: [],
+    company: '',
+    skills: [],
+    hourlyRate: null,
+    bio: '',
     completedJobs: 0,
     newMessages: 0,
     photoUrl: null
@@ -52,7 +56,9 @@ const ProviderDashboard = () => {
         console.log('Provider data received:', providerData);
         setProvider(prevProvider => ({
           ...prevProvider,
-          ...providerData
+          ...providerData,
+          skills: Array.isArray(providerData.skills) ? providerData.skills : [],
+          hourlyRate: providerData.hourlyRate ?? null,
         }));
         
         // Temporary mock jobs data
@@ -79,11 +85,19 @@ const ProviderDashboard = () => {
 
   const handleProfileUpdate = async (updatedProfile) => {
     try {
-      await api.updateProviderProfile(updatedProfile);
-      setProvider(updatedProfile);
+      const updated = await api.updateProviderProfile(updatedProfile);
+      setProvider(prev => ({
+        ...prev,
+        ...updated,
+        skills: Array.isArray(updated.skills) ? updated.skills : [],
+        hourlyRate: updated.hourlyRate ?? null,
+      }));
+      setError(null);
+      return updated;
     } catch (error) {
       console.error('Error updating profile:', error);
-      // Handle error appropriately
+      setError('Failed to update profile. Please try again.');
+      throw error;
     }
   };
 

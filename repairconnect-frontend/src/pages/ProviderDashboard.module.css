@@ -96,6 +96,12 @@
   flex-grow: 1;
 }
 
+.companyName {
+  margin-top: 4px;
+  color: #546e7a;
+  font-weight: 500;
+}
+
 .stats {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -166,6 +172,11 @@
   font-size: 14px;
 }
 
+.roleChipActive {
+  background: #2196F3;
+  color: #ffffff;
+}
+
 .editProfileModal {
   position: fixed;
   top: 50%;
@@ -177,6 +188,132 @@
   box-shadow: 0 4px 6px rgba(0,0,0,0.1);
   max-width: 500px;
   width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  z-index: 1000;
+}
+
+.modalTitle {
+  margin-bottom: 16px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.editFormRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.editFormRow label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #455a64;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.editFormRow input,
+.editFormRow textarea {
+  border: 1px solid #cfd8dc;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: #fafafa;
+  transition: border-color 0.2s ease;
+}
+
+.editFormRow input:focus,
+.editFormRow textarea:focus {
+  border-color: #2196F3;
+  outline: none;
+  background: #ffffff;
+}
+
+.editFormRow textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.rolesSection {
+  margin-top: 20px;
+}
+
+.rolesSection h4 {
+  margin-bottom: 12px;
+  font-size: 15px;
+  text-transform: uppercase;
+  color: #37474f;
+}
+
+.rolesList button {
+  border: none;
+  cursor: pointer;
+}
+
+.errorText {
+  color: #d32f2f;
+  margin-top: 10px;
+  font-size: 14px;
+}
+
+.formActions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  justify-content: flex-end;
+}
+
+.cancelButton {
+  background-color: #eceff1;
+  color: #37474f;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.cancelButton:hover {
+  background-color: #dfe4ea;
+}
+
+.logoutButton {
+  background-color: #e53935;
+  margin-left: 12px;
+}
+
+.logoutButton:hover {
+  background-color: #c62828;
+}
+
+.profileDetails {
+  margin: 24px 0;
+  display: grid;
+  gap: 12px;
+}
+
+.detailRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+  border-bottom: 1px solid #eceff1;
+}
+
+.detailLabel {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #90a4ae;
+}
+
+.detailValue {
+  font-size: 16px;
+  font-weight: 500;
+  color: #2c3e50;
 }
 
 .loadingMessage {

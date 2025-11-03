@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import styles from "./AdminDashboard.module.css";
 
-const API_BASE = "http://localhost:8080";
+const API_BASE = "http://localhost:8081";
 
 function AdminDashboard() {
   const [summary, setSummary] = useState(null);
@@ -23,7 +23,7 @@ function AdminDashboard() {
   // Status filter (Active, Pending, Suspended, Banned)
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const token = localStorage.getItem("rc_token");
+  const token = localStorage.getItem("token");
 
   useEffect(() => {
     if (!token) {
@@ -70,7 +70,7 @@ function AdminDashboard() {
   }
 
   function handleLogout() {
-    localStorage.removeItem("rc_token");
+    localStorage.removeItem("token");
     window.location.href = "/";
   }
 

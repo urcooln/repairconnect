@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const API_BASE = "http://localhost:8080";
+const API_BASE = "http://localhost:8081";
 
 export default function AdminLogin() {
   const [email, setEmail] = useState("");
@@ -23,7 +23,7 @@ export default function AdminLogin() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Login failed");
 
-      localStorage.setItem("rc_token", data.token);
+      localStorage.setItem("token", data.token);
 
       navigate("/admin/dashboard");
     } catch (e) {
