@@ -1,0 +1,119 @@
+From 2a2e6bbd056df3917d526583e24f1b91caf6c926 Mon Sep 17 00:00:00 2001
+From: Bipul Rana Magar <mi0@Bipuls-MacBook-Pro.local>
+Date: Wed, 15 Oct 2025 18:38:57 -0400
+Subject: [PATCH] feat: Implement and debug provider approval feature
+
+---
+ .../src/pages/AdminDashboard.js               | 46 ++++++++++++++++++-
+ repairconnect-frontend/src/pages/Register.js  |  7 ++-
+ 2 files changed, 51 insertions(+), 2 deletions(-)
+
+diff --git a/repairconnect-frontend/src/pages/AdminDashboard.js b/repairconnect-frontend/src/pages/AdminDashboard.js
+index b7fcddc..b11cd6e 100644
+--- a/repairconnect-frontend/src/pages/AdminDashboard.js
++++ b/repairconnect-frontend/src/pages/AdminDashboard.js
+@@ -83,6 +83,37 @@ function AdminDashboard() {
+     setConfirmAction(null);
+   }
+ 
++  // Handles the approval of a provider.
++  async function handleApprove(userId) {
++    if (!token) return;
++
++    try {
++      setActioningId(userId);
++      setError(null);
++
++      const res = await fetch(`${API_BASE}/admin/users/${userId}/approve`, {
++        method: "PUT",
++        headers: {
++          Authorization: `Bearer ${token}`,
++        },
++      });
++
++      if (res.status === 401) throw new Error("Unauthorized");
++      if (!res.ok) {
++        const body = await res.json().catch(() => ({}));
++        throw new Error(body.error || "Failed to approve user");
++      }
++
++      // On successful approval, remove the user from the local state to update the UI.
++      setUsers((prev) => prev.filter((u) => u.id !== userId));
++    } catch (err) {
++      console.error("Failed to approve user", err);
++      setError(err.message || "Failed to approve user");
++    } finally {
++      setActioningId(null);
++    }
++  }
++
+   async function handleConfirmedAction() {
+     if (!token || !confirmUser || !confirmAction) return;
+ 
+@@ -253,10 +284,12 @@ function AdminDashboard() {
+                   </tr>
+                 </thead>
+                 <tbody>
+-                  {users.map((user) => {
++                  {/* Filter users to display only providers with a 'pending' status. */}
++                  {users.filter(user => user.role === 'provider' && user.status === 'pending').map((user) => {
+                     const isActive = user.status === "active" || !user.status;
+                     const isSuspended = user.status === "suspended";
+                     const isBanned = user.status === "banned";
++                    const isPending = user.status === "pending";
+                     const statusClass = isBanned
+                       ? styles.statusBanned
+                       : isSuspended
+@@ -297,6 +330,17 @@ function AdminDashboard() {
+                                 </button>
+                               </>
+                             )}
++                            {/* Show the approve button only for users with a 'pending' status. */}
++                            {isPending && (
++                              <>
++                                <button
++                                  onClick={() => handleApprove(user.id)}
++                                  className={`${styles.actionButton} ${styles.approveButton}`}
++                                >
++                                  Approve
++                                </button>
++                              </>
++                            )}
+                             {isSuspended && (
+                               <>
+                                 <button
+diff --git a/repairconnect-frontend/src/pages/Register.js b/repairconnect-frontend/src/pages/Register.js
+index 66699f2..e1e7db1 100644
+--- a/repairconnect-frontend/src/pages/Register.js
++++ b/repairconnect-frontend/src/pages/Register.js
+@@ -7,6 +7,7 @@ export default function Register() {
+   const [name, setName] = useState("");
+   const [email, setEmail] = useState("");
+   const [password, setPassword] = useState("");
++  const [role, setRole] = useState("customer"); // Add role state, default to 'customer'
+   const [error, setError] = useState("");
+   const navigate = useNavigate();
+ 
+@@ -18,7 +19,7 @@ export default function Register() {
+       const res = await fetch(`${API_BASE}/auth/register`, {
+         method: "POST",
+         headers: { "Content-Type": "application/json" },
+-        body: JSON.stringify({ name, email, password }),
++        body: JSON.stringify({ name, email, password, role }), // Send role to backend
+       });
+ 
+       const data = await res.json();
+@@ -56,6 +57,10 @@ export default function Register() {
+         onChange={(e) => setPassword(e.target.value)}
+         required
+       />
++      <select value={role} onChange={(e) => setRole(e.target.value)}>
++        <option value="customer">Customer</option>
++        <option value="provider">Provider</option>
++      </select>
+       <button type="submit">Register</button>
+     </form>
+   );
+-- 
+2.39.5 (Apple Git-154)
+

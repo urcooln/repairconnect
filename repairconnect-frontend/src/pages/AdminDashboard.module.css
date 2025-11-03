@@ -1,0 +1,305 @@
+.container {
+  max-width: 960px;
+  margin: 2rem auto;
+  padding: 0 1.5rem 3rem;
+}
+
+.title {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.logoutWrap {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.logoutButton {
+  padding: 0.5rem 1.25rem;
+  background: #555;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: filter 0.2s ease;
+}
+
+.logoutButton:hover {
+  filter: brightness(1.05);
+}
+
+.stateMessage {
+  text-align: center;
+  color: #444;
+}
+
+.error {
+  text-align: center;
+  color: #b00020;
+  margin-bottom: 1rem;
+}
+
+.summarySection {
+  margin-bottom: 2.5rem;
+}
+
+.summaryGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.summaryCard {
+  background: #f5f5f5;
+  padding: 12px 14px;
+  border-radius: 8px;
+  text-transform: capitalize;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.summaryLabel {
+  font-size: 12px;
+  color: #666;
+}
+
+.summaryValue {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.usersSection {
+  margin-bottom: 2rem;
+}
+
+.sectionTitle {
+  margin-bottom: 10px;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tableHeadRow {
+  background: #fafafa;
+  text-align: left;
+}
+
+.tableHeader {
+  padding: 10px 12px;
+  border-bottom: 1px solid #ddd;
+  font-weight: 600;
+}
+
+.tableCell {
+  padding: 10px 12px;
+  border-bottom: 1px solid #eee;
+  vertical-align: middle;
+  word-break: normal;
+}
+
+.statusCell {
+  text-transform: capitalize;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.statusActive {
+  color: #388e3c;
+}
+
+.statusSuspended {
+  color: #ff9800;
+}
+
+.statusBanned {
+  color: #d32f2f;
+}
+
+.idCell {
+  width: 60px;
+  white-space: nowrap;
+}
+
+.nameCell {
+  min-width: 120px;
+}
+
+.emailCell {
+  min-width: 180px;
+  word-break: break-word;
+}
+
+.roleCell {
+  min-width: 110px;
+  white-space: nowrap;
+}
+
+.suspendedCell {
+  min-width: 120px;
+  white-space: nowrap;
+}
+
+.actionCell {
+  min-width: 0;
+}
+
+.actionGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.actionButton {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #fff;
+  cursor: pointer;
+  transition: filter 0.2s ease;
+  flex: 1 1 110px;
+}
+
+.actionButton:hover {
+  filter: brightness(1.05);
+}
+
+.suspendButton {
+  background: #ff9800;
+}
+
+.banButton {
+  background: #9c27b0;
+}
+
+.activateButton {
+  background: #388e3c;
+}
+
+.deleteButton {
+  background: #d32f2f;
+}
+
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 9999;
+}
+
+.modalOverlayVisible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modalContent {
+  background: #fff;
+  padding: 24px 28px;
+  border-radius: 10px;
+  width: 90%;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transform: scale(0.9);
+  transition: transform 0.25s ease;
+}
+
+.modalContentVisible {
+  transform: scale(1);
+}
+
+.modalTitle {
+  margin-bottom: 12px;
+  color: var(--modal-accent, #555);
+}
+
+.modalMessage {
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.modalDuration {
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.modalDurationLabel {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: #444;
+}
+
+.modalDurationSelect {
+  width: 100%;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.modalButton {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: filter 0.2s ease;
+}
+
+.modalConfirm {
+  background: var(--modal-accent, #555);
+  color: #fff;
+}
+
+.modalCancel {
+  background: #ccc;
+  color: #333;
+}
+
+.modalButton:hover {
+  filter: brightness(1.05);
+}
+
+@media (max-width: 768px) {
+  .table {
+    font-size: 14px;
+  }
+
+  .nameCell {
+    min-width: 100px;
+  }
+
+  .emailCell {
+    min-width: 160px;
+  }
+
+  .actionGroup {
+    gap: 8px;
+  }
+
+  .actionButton {
+    flex: 1 1 100px;
+  }
+}
