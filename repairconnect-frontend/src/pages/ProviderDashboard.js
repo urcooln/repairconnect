@@ -119,7 +119,14 @@ const ProviderDashboard = () => {
 
   return (
     <div className={styles.container}>
-      <h1>Dashboard Test</h1>
+      <header className={styles.pageHeader}>
+        <h1 className={styles.pageTitle}>
+          <span className={styles.brandHighlight}>RepairConnect</span> Provider Dashboard
+        </h1>
+        <p className={styles.pageSubtitle}>
+          Manage your profile, showcase your services, and discover new opportunities tailored to you.
+        </p>
+      </header>
       {provider.firstName && <WelcomeMessage firstName={provider.firstName} email={provider.email} />}
       
       <ProfileSection 

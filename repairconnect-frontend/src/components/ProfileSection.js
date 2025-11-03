@@ -164,38 +164,45 @@ const ProfileSection = ({ provider, onSave }) => {
           )}
         </div>
 
-        <div className={styles.providerInfo}>
-          <h2>
-            {`${provider.firstName || ''} ${provider.lastName || ''}`.trim() || provider.email}
-          </h2>
-          {provider.company && (
-            <p className={styles.companyName}>{provider.company}</p>
-          )}
-          {displayRoles.length > 0 && (
-            <div className={styles.rolesList}>
-              {displayRoles.map((role) => (
-                <span key={role} className={styles.roleChip}>
-                  {role}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
+        <div className={styles.profileInfoPanel}>
+          <div className={styles.providerInfo}>
+            <h2 className={styles.profileName}>
+              {`${provider.firstName || ''} ${provider.lastName || ''}`.trim() || provider.email}
+            </h2>
+            {provider.email && (
+              <p className={styles.profileEmail}>{provider.email}</p>
+            )}
+            {provider.company && (
+              <p className={styles.companyName}>{provider.company}</p>
+            )}
+            {displayRoles.length > 0 && (
+              <div className={styles.rolesList}>
+                {displayRoles.map((role) => (
+                  <span key={role} className={styles.roleChip}>
+                    {role}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
 
-        {!isEditing && (
-          <button
-            className={styles.editButton}
-            onClick={() => setIsEditing(true)}
-          >
-            Edit Profile
-          </button>
-        )}
-        <button
-          className={`${styles.editButton} ${styles.logoutButton}`}
-          onClick={handleLogout}
-        >
-          Logout
-        </button>
+          <div className={styles.profileActions}>
+            {!isEditing && (
+              <button
+                className={styles.editButton}
+                onClick={() => setIsEditing(true)}
+              >
+                Edit Profile
+              </button>
+            )}
+            <button
+              className={`${styles.editButton} ${styles.logoutButton}`}
+              onClick={handleLogout}
+            >
+              Logout
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className={styles.profileDetails}>
