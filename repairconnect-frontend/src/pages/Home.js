@@ -1,4 +1,3 @@
-// src/pages/Home.js
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import jwtDecode from "jwt-decode";
@@ -15,7 +14,6 @@ function Home() {
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  // ✅ Reset Modal State
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -23,7 +21,6 @@ function Home() {
   const [resetError, setResetError] = useState("");
   const [resetSuccess, setResetSuccess] = useState("");
 
-  // ✅ LOGIN
   async function handleLogin(e) {
     e.preventDefault();
     setError("");
@@ -39,51 +36,32 @@ function Home() {
       if (res.ok && data.token) {
         localStorage.setItem("token", data.token);
 
-<<<<<<< HEAD
-      // Fallback: customer/provider
-      res = await fetch(`${API_BASE}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      data = await res.json();
-
-      if (res.ok) {
-        localStorage.setItem("rc_token", data.token);
-
-  const decoded = jwtDecode(data.token);
-        console.log("Decoded token:", decoded);
-=======
         try {
           const decoded = jwtDecode(data.token);
-          console.log("Decoded token:", decoded);
-          
-          // Navigate based on role
-          if (decoded.role === 'provider') {
-            return navigate('/provider/dashboard');
-          } else if (decoded.role === 'customer') {
-            return navigate('/customer/dashboard');
-          } else if (decoded.role === 'admin') {
-            return navigate('/admin/dashboard');
-          } else {
-            throw new Error('Invalid role');
+          if (decoded.role === "provider") {
+            return navigate("/provider/dashboard");
           }
-        } catch (error) {
-          console.error('Token decode error:', error);
-          setError('Invalid login response');
-          localStorage.removeItem('token');
+          if (decoded.role === "customer") {
+            return navigate("/customer/dashboard");
+          }
+          if (decoded.role === "admin") {
+            return navigate("/admin/dashboard");
+          }
+          throw new Error("Invalid role");
+        } catch (err) {
+          console.error("Token decode error:", err);
+          setError("Invalid login response");
+          localStorage.removeItem("token");
+          return;
         }
->>>>>>> 295e417 (I changed the back end port for the Provider dashboard to '8081' due to communication conflicts to the front end. I also formatted the front end to display a sample of the provider dashboard featureing: User profile Photo handleing, role handleing, job listing, and a way to filter jobs by provider roles selected. As a reminder most of the front end page buttons arent built in the back end yet these changes are being pushed for demonstration purposes.)
-
       }
 
       throw new Error(data.error || "Login failed");
-    } catch (e) {
-      setError(e.message);
+    } catch (err) {
+      setError(err.message);
     }
   }
 
-  // ✅ REGISTER
   async function handleRegister(e) {
     e.preventDefault();
     setError("");
@@ -98,19 +76,16 @@ function Home() {
 
       if (!res.ok) throw new Error(data.error || "Registration failed");
 
-      // After register → back to login form
       setIsRegistering(false);
       setName("");
       setEmail("");
       setPassword("");
       setRole("customer");
-      console.log({ name, email, password, role });
-    } catch (e) {
-      setError(e.message);
+    } catch (err) {
+      setError(err.message);
     }
   }
 
-  // ✅ RESET PASSWORD
   async function handleResetPassword(e) {
     e.preventDefault();
     setResetError("");
@@ -128,16 +103,8 @@ function Home() {
         body: JSON.stringify({ email: resetEmail, newPassword }),
       });
 
-      let data = null;
-      try {
-        data = await res.json();
-      } catch {
-        // Non-JSON response (e.g., HTML 404); handled below with fallback message.
-      }
-
-      if (!res.ok) {
-        throw new Error(data?.error || "Please type a valid email.");
-      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Password reset failed.");
 
       setResetSuccess("Password successfully reset. You can now log in.");
       setTimeout(() => setShowResetModal(false), 2000);
@@ -208,6 +175,7 @@ function Home() {
                 className={styles.input}
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
+                required
               >
                 <option value="customer">Customer</option>
                 <option value="provider">Provider</option>
@@ -217,29 +185,25 @@ function Home() {
             <button className={styles.submitButton} type="submit">
               Register
             </button>
-          </form>
-
-          <p>
-            Already have an account?{" "}
             <button
-              className={styles.linkButton}
+              className={styles.secondaryButton}
               type="button"
               onClick={() => setIsRegistering(false)}
             >
-              Sign In
+              Back to login
             </button>
-          </p>
+          </form>
         </>
       ) : (
         <>
-          <p className={styles.subtitle}>Sign-in</p>
+          <p className={styles.subtitle}>Login</p>
           <form className={styles.form} onSubmit={handleLogin}>
             <div className={styles.inputGroup}>
-              <label className={styles.label} htmlFor="email">
+              <label className={styles.label} htmlFor="login-email">
                 Email
               </label>
               <input
-                id="email"
+                id="login-email"
                 className={styles.input}
                 type="email"
                 value={email}
@@ -249,11 +213,11 @@ function Home() {
             </div>
 
             <div className={styles.inputGroup}>
-              <label className={styles.label} htmlFor="password">
+              <label className={styles.label} htmlFor="login-password">
                 Password
               </label>
               <input
-                id="password"
+                id="login-password"
                 className={styles.input}
                 type="password"
                 value={password}
@@ -262,12 +226,13 @@ function Home() {
               />
             </div>
 
+            {error && <p className={styles.error}>{error}</p>}
+
             <button className={styles.submitButton} type="submit">
-              Sign In
+              Login
             </button>
           </form>
 
-          {/* ✅ Forgot Password link */}
           <p
             style={{
               color: "#007bff",
@@ -295,54 +260,68 @@ function Home() {
 
       {error && <p className={styles.error}>{error}</p>}
 
-      {/* ✅ Reset Password Modal */}
       {showResetModal && (
         <div className={styles.modalOverlay}>
           <div className={styles.modal}>
-            <h2 className={styles.modalTitle}>Reset Password</h2>
-
+            <h2>Reset Password</h2>
             {resetError && <p className={styles.error}>{resetError}</p>}
             {resetSuccess && <p className={styles.success}>{resetSuccess}</p>}
-
             <form onSubmit={handleResetPassword}>
-              <input
-                type="email"
-                placeholder="Enter your email"
-                value={resetEmail}
-                onChange={(e) => setResetEmail(e.target.value)}
-                required
-                className={styles.modalInput}
-              />
+              <div className={styles.inputGroup}>
+                <label className={styles.label} htmlFor="reset-email">
+                  Email
+                </label>
+                <input
+                  id="reset-email"
+                  className={styles.input}
+                  type="email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  required
+                />
+              </div>
 
-              <input
-                type="password"
-                placeholder="New password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-                className={styles.modalInput}
-              />
+              <div className={styles.inputGroup}>
+                <label className={styles.label} htmlFor="new-password">
+                  New Password
+                </label>
+                <input
+                  id="new-password"
+                  className={styles.input}
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                />
+              </div>
 
-              <input
-                type="password"
-                placeholder="Confirm new password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                className={styles.modalInput}
-              />
+              <div className={styles.inputGroup}>
+                <label className={styles.label} htmlFor="confirm-password">
+                  Confirm Password
+                </label>
+                <input
+                  id="confirm-password"
+                  className={styles.input}
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                />
+              </div>
 
-              <button type="submit" className={styles.modalButtonPrimary}>
-                Reset Password
-              </button>
+              <div className={styles.modalActions}>
+                <button className={styles.submitButton} type="submit">
+                  Reset Password
+                </button>
+                <button
+                  className={styles.secondaryButton}
+                  type="button"
+                  onClick={() => setShowResetModal(false)}
+                >
+                  Cancel
+                </button>
+              </div>
             </form>
-
-            <button
-              onClick={() => setShowResetModal(false)}
-              className={styles.modalButtonSecondary}
-            >
-              Cancel
-            </button>
           </div>
         </div>
       )}
