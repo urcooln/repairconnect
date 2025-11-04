@@ -26,7 +26,15 @@ function Home() {
     setError("");
 
     try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
+      //Checks if the email given is the admin email
+      const isAdmin = email === "admin@repairconnect.local";
+
+      //Endpoint is chosen based on isAdmin's value
+      const endpoint = isAdmin
+	      ? `${API_BASE}/auth/admin/login`
+	      : `${API_BASE}/auth/login`;
+      
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
