@@ -10,10 +10,10 @@ const app = express();
 
 // pull values from .env
 const { ADMIN_EMAIL, ADMIN_PASSWORD, JWT_SECRET } = process.env;
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 8081;
 
 app.use(cors({ origin: "http://localhost:3000" }));
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
 // ✅ Public root route (for testing)
 app.get("/", (req, res) => {
@@ -53,12 +53,53 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+let providerSchemaReadyPromise = null;
+
+async function ensureProviderSchema() {
+  if (!providerSchemaReadyPromise) {
+    providerSchemaReadyPromise = (async () => {
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS roles TEXT[]`;
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_url TEXT`;
+      await sql`
+        CREATE TABLE IF NOT EXISTS provider_profiles (
+          user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          company_name TEXT,
+          skills TEXT,
+          hourly_rate NUMERIC(10,2),
+          bio TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `;
+    })().catch((err) => {
+      providerSchemaReadyPromise = null;
+      throw err;
+    });
+  }
+
+  return providerSchemaReadyPromise;
+}
+
 // ✅ Register new users
 app.post("/auth/register", async (req, res) => {
   const { name, email, password, role } = req.body;
   console.log("REGISTER payload:", req.body);
 
   try {
+    if (!name || !email || !password || !role) {
+      return res.status(400).json({ error: "All fields are required" });
+    }
+
+    const [existing] = await sql`
+      SELECT id FROM users WHERE email = ${email}
+    `;
+
+    if (existing) {
+      return res.status(400).json({ error: "Email already registered" });
+    }
+
+    await ensureProviderSchema();
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Set initial status for providers
@@ -73,7 +114,12 @@ app.post("/auth/register", async (req, res) => {
     res.json({ message: "User registered", user: result[0] });
   } catch (err) {
     console.error("Registration failed:", err);
-    res.status(500).json({ error: "Registration failed" });
+
+    if (err.code === "23505") {
+      return res.status(400).json({ error: "Email already registered" });
+    }
+
+    res.status(500).json({ error: err.message || "Registration failed" });
   }
 });
 
@@ -82,6 +128,11 @@ app.post("/auth/login", async (req, res) => {
   const { email, password } = req.body;
 
   try {
+    if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+      const adminToken = jwt.sign({ email, role: "admin" }, JWT_SECRET, { expiresIn: "2h" });
+      return res.json({ token: adminToken });
+    }
+
     const result = await sql`
       SELECT * FROM users WHERE email = ${email}
     `;
@@ -133,6 +184,35 @@ app.post("/auth/login", async (req, res) => {
   } catch (err) {
     console.error("Login failed:", err);
     res.status(500).json({ error: "Login failed" });
+  }
+});
+
+// ✅ Password reset
+app.post("/auth/reset-password", async (req, res) => {
+  const { email, newPassword } = req.body || {};
+
+  if (!email || !newPassword) {
+    return res.status(400).json({ error: "Email and newPassword are required." });
+  }
+
+  try {
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    const result = await sql`
+      UPDATE users
+      SET password_hash = ${hashedPassword}
+      WHERE email = ${email}
+      RETURNING id, email
+    `;
+
+    if (!result.length) {
+      return res.status(404).json({ error: "No user found with that email." });
+    }
+
+    res.json({ message: "Password successfully reset." });
+  } catch (err) {
+    console.error("Error resetting password:", err);
+    res.status(500).json({ error: "Failed to reset password." });
   }
 });
 
@@ -308,6 +388,179 @@ app.post("/admin/users/:id/activate", async (req, res) => {
   } catch (err) {
     console.error("Error reactivating user:", err);
     res.status(500).json({ error: "Failed to reactivate user." });
+  }
+});
+
+// ✅ Provider profile routes
+app.get("/provider/profile", requireAuth, async (req, res) => {
+  try {
+    await ensureProviderSchema();
+
+    if (!req.user?.id) {
+      return res.status(400).json({ error: "Missing provider id" });
+    }
+
+    const [provider] = await sql`
+      SELECT
+        u.id,
+        u.name,
+        u.email,
+        u.role,
+        u.roles,
+        u.photo_url,
+        pp.company_name,
+        pp.skills,
+        pp.hourly_rate,
+        pp.bio
+      FROM users u
+      LEFT JOIN provider_profiles pp ON pp.user_id = u.id
+      WHERE u.id = ${req.user.id} AND LOWER(u.role) = 'provider'
+    `;
+
+    if (!provider) {
+      return res.status(404).json({ error: "Provider not found" });
+    }
+
+    const [firstName = "", ...rest] = typeof provider.name === "string"
+      ? provider.name.trim().split(/\s+/)
+      : [""];
+    const lastName = rest.join(" ");
+
+    let parsedRoles = [];
+    if (Array.isArray(provider.roles)) {
+      parsedRoles = provider.roles;
+    } else if (typeof provider.roles === "string" && provider.roles.length > 0) {
+      parsedRoles = provider.roles.split(",").map((role) => role.trim());
+    }
+    if (parsedRoles.length === 0 && provider.role) {
+      parsedRoles = [provider.role];
+    }
+
+    let skills = [];
+    if (Array.isArray(provider.skills)) {
+      skills = provider.skills;
+    } else if (typeof provider.skills === "string" && provider.skills.length > 0) {
+      try {
+        skills = JSON.parse(provider.skills);
+      } catch {
+        skills = provider.skills.split(",").map((skill) => skill.trim());
+      }
+    }
+
+    res.json({
+      firstName,
+      lastName,
+      email: provider.email,
+      company: provider.company_name || "",
+      skills,
+      hourlyRate: provider.hourly_rate ? Number(provider.hourly_rate) : null,
+      roles: parsedRoles,
+      photoUrl: provider.photo_url || null,
+      bio: provider.bio || "",
+      completedJobs: 0,
+      newMessages: 0,
+    });
+  } catch (err) {
+    console.error("Error fetching provider profile:", err);
+    res.status(500).json({ error: "Failed to fetch provider profile" });
+  }
+});
+
+app.put("/provider/profile", requireAuth, async (req, res) => {
+  try {
+    await ensureProviderSchema();
+
+    const { id } = req.user || {};
+
+    if (!id) {
+      return res.status(400).json({ error: "Missing provider id" });
+    }
+
+    const {
+      firstName,
+      lastName,
+      company,
+      skills = [],
+      hourlyRate,
+      roles = [],
+      photoUrl,
+      bio,
+    } = req.body || {};
+
+    const [existing] = await sql`
+      SELECT id, name, roles, photo_url
+      FROM users
+      WHERE id = ${id} AND LOWER(role) = 'provider'
+    `;
+
+    if (!existing) {
+      return res.status(404).json({ error: "Provider not found" });
+    }
+
+    const fullNameParts = [firstName, lastName].map((part) =>
+      typeof part === "string" ? part.trim() : ""
+    );
+    const fullName = fullNameParts.filter(Boolean).join(" ") || existing.name;
+
+    const normalizedRoles = Array.isArray(roles)
+      ? roles.map((role) => role.trim()).filter(Boolean)
+      : Array.isArray(existing.roles)
+      ? existing.roles
+      : [];
+
+    const normalizedSkills = Array.isArray(skills)
+      ? skills.map((skill) => (typeof skill === "string" ? skill.trim() : "")).filter(Boolean)
+      : [];
+
+    const hourlyRateNumber =
+      typeof hourlyRate === "number"
+        ? hourlyRate
+        : typeof hourlyRate === "string"
+        ? Number.parseFloat(hourlyRate)
+        : null;
+    const safeHourlyRate = Number.isFinite(hourlyRateNumber) ? hourlyRateNumber : null;
+
+    const normalizedCompany =
+      typeof company === "string" ? company.trim() || null : company || null;
+    const normalizedBio =
+      typeof bio === "string" ? bio.trim() || null : bio || null;
+
+    await sql.begin(async (tx) => {
+      await tx`
+        UPDATE users
+        SET
+          name = ${fullName},
+          roles = ${sql.array(normalizedRoles)},
+          photo_url = ${photoUrl ?? existing.photo_url}
+        WHERE id = ${id} AND LOWER(role) = 'provider'
+      `;
+
+      await tx`
+        INSERT INTO provider_profiles (user_id, company_name, skills, hourly_rate, bio, updated_at)
+        VALUES (${id}, ${normalizedCompany}, ${JSON.stringify(normalizedSkills)}, ${safeHourlyRate}, ${normalizedBio}, NOW())
+        ON CONFLICT (user_id)
+        DO UPDATE SET
+          company_name = EXCLUDED.company_name,
+          skills = EXCLUDED.skills,
+          hourly_rate = EXCLUDED.hourly_rate,
+          bio = EXCLUDED.bio,
+          updated_at = NOW()
+      `;
+    });
+
+    res.json({
+      firstName: fullNameParts[0] || "",
+      lastName: fullNameParts.slice(1).join(" "),
+      company: normalizedCompany || "",
+      skills: normalizedSkills,
+      hourlyRate: safeHourlyRate,
+      roles: normalizedRoles,
+      photoUrl: photoUrl ?? existing.photo_url,
+      bio: normalizedBio || "",
+    });
+  } catch (err) {
+    console.error("Failed to update provider profile:", err);
+    res.status(500).json({ error: "Failed to update provider profile" });
   }
 });
 
