@@ -367,6 +367,21 @@ app.get("/admin/users", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// List all service requests
+app.get("/admin/requests", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const requests = await sql`
+      SELECT sr.id, u.name AS customer_name, sr.title, sr.description, sr.status
+      FROM service_requests sr LEFT JOIN users u ON sr.customer_id = u.id
+      ORDER by id
+    `;
+    res.json(requests);
+  } catch (err) {
+    console.error("Failed to load requests:", err);
+    res.status(500).json({ error: "Failed to load requests" });
+  }
+});
+
 // ✅ Delete a user
 app.delete("/admin/users/:id", requireAuth, requireAdmin, async (req, res) => {
   const userId = Number.parseInt(req.params.id, 10);
@@ -390,6 +405,32 @@ app.delete("/admin/users/:id", requireAuth, requireAdmin, async (req, res) => {
   } catch (err) {
     console.error("Failed to delete user:", err);
     res.status(500).json({ error: "Failed to delete user" });
+  }
+});
+
+//Delete a service request
+app.delete("/admin/requests/:id", requireAuth, requireAdmin, async (req, res) => {
+  const requestId = Number.parseInt(req.params.id, 10);
+
+  if (Number.isNaN(requestId)) {
+    return res.status(400).json({ error: "Invalid request id" });
+  }
+
+  try {
+    const deleted = await sql`
+      DELETE FROM service_requests
+      WHERE id = ${requestId}
+      RETURNING id
+    `;
+
+    if (deleted.length === 0) {
+      return res.status(404).json({ error: "Service request not found" });
+    }
+
+    res.json({ message: "Service request deleted", id: deleted[0].id });
+  } catch (err) {
+    console.error("Failed to delete service request:", err);
+    res.status(500).json({ error: "Failed to delete service request" });
   }
 });
 
@@ -906,6 +947,31 @@ app.delete("/service-requests/:id", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Failed to cancel service request" });
   }
 });
+
+//Automatically delete requests that have been cancelled for >=24 hours
+async function cleanUpCancelledRequests() {
+  try {
+    const result = await sql`
+      DELETE FROM service_requests
+      WHERE status = 'cancelled'
+      AND updated_at <= NOW() - INTERVAL '24 hours'
+      RETURNING id, title
+    `;
+
+    if (result.length > 0) {
+      console.log(`🧹 Auto-deleted ${result.length} cancelled service request(s):`);
+      result.forEach(r => console.log(`   • ID ${r.id} – ${r.title || "Untitled"}`));
+    }
+  } catch (err) {
+    console.error("❌ Failed to clean up cancelled service requests:", err);
+  }
+}
+
+// Run cleanup every hour (3 600 000 ms)
+setInterval(cleanUpCancelledRequests, 3600000);
+
+// Optionally run once on startup
+cleanUpCancelledRequests();
 
 // ✅ Start the server
 app.listen(PORT, () => console.log(`🚀 API running on http://localhost:${PORT}`));

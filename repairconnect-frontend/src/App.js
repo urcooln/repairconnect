@@ -3,6 +3,7 @@ import Home from "./pages/Home.js";
 import CustomerDashboard from "./pages/CustomerDashboard.js";
 import ProviderDashboard from "./pages/ProviderDashboard.js";
 import AdminDashboard from "./pages/AdminDashboard.js";
+import AdminRequests from "./pages/AdminRequests.js";
 import ProtectedRoute from "./components/ProtectedRoute.jsx"; // ✅ import gatekeeper
 
 function App() {
@@ -37,6 +38,14 @@ function App() {
         element={
           <ProtectedRoute allowedRoles={["admin"]}>
             <AdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/requests"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <AdminRequests />
           </ProtectedRoute>
         }
       />

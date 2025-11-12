@@ -28,6 +28,21 @@
   filter: brightness(1.05);
 }
 
+.navButton {
+  padding: 0.5rem 1.25rem;
+  background: #555;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: filter 0.2s ease;
+  margin-right: 10px;
+}
+
+.navButton:hover {
+  filter: brightness(1.05);
+}
+
 .stateMessage {
   text-align: center;
   color: #444;
@@ -140,6 +155,15 @@
 .roleCell {
   min-width: 110px;
   white-space: nowrap;
+}
+
+.descriptionCell {
+  max-width: 250px;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.4;
+  vertical-align: top;
 }
 
 .suspendedCell {
