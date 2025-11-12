@@ -49,21 +49,11 @@ function requireAuth(req, res, next) {
 }
 
 function requireAdmin(req, res, next) {
-  if ((req.user?.role || "").toLowerCase() !== "admin") {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-  next();
-}
-
-function requireProvider(req, res, next) {
-  if ((req.user?.role || "").toLowerCase() !== "provider") {
-    return res.status(403).json({ error: "Provider access required" });
-  }
+  if (req.user?.role !== "admin") return res.status(403).json({ error: "Forbidden" });
   next();
 }
 
 let providerSchemaReadyPromise = null;
-let serviceRequestSchemaReadyPromise = null;
 
 async function ensureProviderSchema() {
   if (!providerSchemaReadyPromise) {
@@ -88,108 +78,6 @@ async function ensureProviderSchema() {
   }
 
   return providerSchemaReadyPromise;
-}
-
-async function ensureServiceRequestSchema() {
-  if (!serviceRequestSchemaReadyPromise) {
-    serviceRequestSchemaReadyPromise = (async () => {
-      await sql`
-        CREATE TABLE IF NOT EXISTS service_requests (
-          id SERIAL PRIMARY KEY,
-          customer_id INTEGER,
-          title TEXT,
-          category TEXT,
-          description TEXT
-        )
-      `;
-
-      await sql`
-        ALTER TABLE service_requests
-        ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES users(id) ON DELETE CASCADE
-      `;
-
-      await sql`
-        ALTER TABLE service_requests
-        ADD COLUMN IF NOT EXISTS title TEXT
-      `;
-
-      await sql`
-        ALTER TABLE service_requests
-        ADD COLUMN IF NOT EXISTS category TEXT
-      `;
-
-      await sql`
-        ALTER TABLE service_requests
-        ADD COLUMN IF NOT EXISTS description TEXT
-      `;
-
-      await sql`ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS preferred_date TIMESTAMP`;
-      await sql`ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'pending'`;
-      await sql`ALTER TABLE service_requests ALTER COLUMN status SET DEFAULT 'pending'`;
-      await sql`ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`;
-      await sql`ALTER TABLE service_requests ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP`;
-      await sql`ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`;
-      await sql`ALTER TABLE service_requests ALTER COLUMN updated_at SET DEFAULT CURRENT_TIMESTAMP`;
-      await sql`ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS preferred_timezone TEXT`;
-
-      const columns = await sql`
-        SELECT column_name, data_type
-        FROM information_schema.columns
-        WHERE table_name = 'service_requests'
-          AND column_name = ANY(${["preferred_date", "created_at", "updated_at"]})
-      `;
-
-      const columnType = (name) =>
-        columns.find((col) => col.column_name === name)?.data_type ?? null;
-
-      if (columnType("preferred_date") !== "timestamp with time zone") {
-        await sql`
-          ALTER TABLE service_requests
-          ALTER COLUMN preferred_date
-          TYPE TIMESTAMPTZ
-          USING
-            CASE
-              WHEN preferred_date IS NULL THEN NULL
-              ELSE preferred_date AT TIME ZONE 'UTC'
-            END
-        `;
-      }
-
-      if (columnType("created_at") !== "timestamp with time zone") {
-        await sql`
-          ALTER TABLE service_requests
-          ALTER COLUMN created_at
-          TYPE TIMESTAMPTZ
-          USING
-            CASE
-              WHEN created_at IS NULL THEN NULL
-              ELSE created_at AT TIME ZONE 'UTC'
-            END
-        `;
-      }
-
-      if (columnType("updated_at") !== "timestamp with time zone") {
-        await sql`
-          ALTER TABLE service_requests
-          ALTER COLUMN updated_at
-          TYPE TIMESTAMPTZ
-          USING
-            CASE
-              WHEN updated_at IS NULL THEN NULL
-              ELSE updated_at AT TIME ZONE 'UTC'
-            END
-        `;
-      }
-
-      await sql`CREATE INDEX IF NOT EXISTS idx_service_requests_customer ON service_requests(customer_id)`;
-      await sql`CREATE INDEX IF NOT EXISTS idx_service_requests_status ON service_requests(status)`;
-    })().catch((err) => {
-      serviceRequestSchemaReadyPromise = null;
-      throw err;
-    });
-  }
-
-  return serviceRequestSchemaReadyPromise;
 }
 
 // ✅ Register new users
@@ -367,6 +255,21 @@ app.get("/admin/users", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// List all service requests
+app.get("/admin/requests", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const requests = await sql`
+      SELECT sr.id, u.name AS customer_name, sr.title, sr.description, sr.status
+      FROM service_requests sr LEFT JOIN users u ON sr.customer_id = u.id
+      ORDER by id
+    `;
+    res.json(requests);
+  } catch (err) {
+    console.error("Failed to load requests:", err);
+    res.status(500).json({ error: "Failed to load requests" });
+  }
+});
+
 // ✅ Delete a user
 app.delete("/admin/users/:id", requireAuth, requireAdmin, async (req, res) => {
   const userId = Number.parseInt(req.params.id, 10);
@@ -390,6 +293,32 @@ app.delete("/admin/users/:id", requireAuth, requireAdmin, async (req, res) => {
   } catch (err) {
     console.error("Failed to delete user:", err);
     res.status(500).json({ error: "Failed to delete user" });
+  }
+});
+
+//Delete a service request
+app.delete("/admin/requests/:id", requireAuth, requireAdmin, async (req, res) => {
+  const requestId = Number.parseInt(req.params.id, 10);
+
+  if (Number.isNaN(requestId)) {
+    return res.status(400).json({ error: "Invalid request id" });
+  }
+
+  try {
+    const deleted = await sql`
+      DELETE FROM service_requests
+      WHERE id = ${requestId}
+      RETURNING id
+    `;
+
+    if (deleted.length === 0) {
+      return res.status(404).json({ error: "Service request not found" });
+    }
+
+    res.json({ message: "Service request deleted", id: deleted[0].id });
+  } catch (err) {
+    console.error("Failed to delete service request:", err);
+    res.status(500).json({ error: "Failed to delete service request" });
   }
 });
 
@@ -678,58 +607,19 @@ app.put("/provider/profile", requireAuth, async (req, res) => {
 
 // ✅ Create new service request
 app.post("/service-requests", requireAuth, async (req, res) => {
-  const {
-    title: rawTitle,
-    category,
-    description,
-    preferred_date,
-    preferred_timezone,
-  } = req.body;
-  const title = (rawTitle || "").trim();
-  const descriptionText = description?.trim();
+  const { category, description, preferred_date } = req.body;
   const customerId = req.user.id;
-  let normalizedPreferredDate = null;
-  const preferredTimezone =
-    typeof preferred_timezone === "string" && preferred_timezone.trim().length > 0
-      ? preferred_timezone.trim()
-      : null;
 
-  if (!title || !category || !descriptionText) {
+  if (!category || !description) {
     return res.status(400).json({ 
-      error: "Title, category, and description are required" 
+      error: "Category and description are required" 
     });
   }
 
-  if (preferred_date) {
-    const parsedPreferred = new Date(preferred_date);
-    if (Number.isNaN(parsedPreferred.getTime())) {
-      return res.status(400).json({ error: "Invalid preferred date format" });
-    }
-    normalizedPreferredDate = parsedPreferred.toISOString();
-  }
-
   try {
-    await ensureServiceRequestSchema();
-
     const result = await sql`
-      INSERT INTO service_requests (
-        customer_id,
-        title,
-        category,
-        description,
-        preferred_date,
-        preferred_timezone,
-        status
-      )
-      VALUES (
-        ${customerId},
-        ${title},
-        ${category},
-        ${descriptionText},
-        ${normalizedPreferredDate},
-        ${preferredTimezone},
-        'pending'
-      )
+      INSERT INTO service_requests (customer_id, category, description, preferred_date, status)
+      VALUES (${customerId}, ${category}, ${description}, ${preferred_date || null}, 'pending')
       RETURNING *
     `;
 
@@ -740,85 +630,7 @@ app.post("/service-requests", requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("Error creating service request:", err);
-    res.status(500).json({
-      error: err?.message || "Failed to create service request",
-      detail: err?.detail || null,
-    });
-  }
-});
-
-// ✅ Allow providers to view open service requests
-app.get("/provider/jobs", requireAuth, requireProvider, async (req, res) => {
-  const categoryFilter =
-    typeof req.query?.category === "string" && req.query.category.trim().length > 0
-      ? req.query.category.trim()
-      : null;
-
-  try {
-    await ensureServiceRequestSchema();
-
-    const requests = categoryFilter
-      ? await sql`
-          SELECT
-            sr.id,
-            sr.title,
-            sr.category,
-            sr.description,
-            sr.preferred_date,
-            sr.preferred_timezone,
-            sr.status,
-            sr.created_at,
-            u.name AS customer_name,
-            u.email AS customer_email
-          FROM service_requests sr
-          JOIN users u ON u.id = sr.customer_id
-          WHERE sr.status = 'pending' AND LOWER(sr.category) = LOWER(${categoryFilter})
-          ORDER BY sr.created_at DESC
-        `
-      : await sql`
-          SELECT
-            sr.id,
-            sr.title,
-            sr.category,
-            sr.description,
-            sr.preferred_date,
-            sr.preferred_timezone,
-            sr.status,
-            sr.created_at,
-            u.name AS customer_name,
-            u.email AS customer_email
-          FROM service_requests sr
-          JOIN users u ON u.id = sr.customer_id
-          WHERE sr.status = 'pending'
-          ORDER BY sr.created_at DESC
-        `;
-
-    res.json(
-      requests.map((request) => {
-        const serializeDate = (value) => {
-          if (!value) return null;
-          if (value instanceof Date) return value.toISOString();
-          const parsed = new Date(value);
-          return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
-        };
-
-        return {
-          id: request.id,
-          title: request.title,
-          category: request.category,
-          description: request.description,
-          preferredDate: serializeDate(request.preferred_date),
-          preferredTimezone: request.preferred_timezone || null,
-          status: request.status,
-          createdAt: serializeDate(request.created_at),
-          customerName: request.customer_name || "",
-          customerEmail: request.customer_email || "",
-        };
-      })
-    );
-  } catch (err) {
-    console.error("Error fetching provider jobs:", err);
-    res.status(500).json({ error: "Failed to fetch service requests" });
+    res.status(500).json({ error: "Failed to create service request" });
   }
 });
 
@@ -827,30 +639,13 @@ app.get("/service-requests/my-requests", requireAuth, async (req, res) => {
   const customerId = req.user.id;
 
   try {
-    await ensureServiceRequestSchema();
-
     const requests = await sql`
       SELECT * FROM service_requests 
       WHERE customer_id = ${customerId}
       ORDER BY created_at DESC
     `;
 
-    const serializeDate = (value) => {
-      if (!value) return null;
-      if (value instanceof Date) return value.toISOString();
-      const parsed = new Date(value);
-      return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
-    };
-
-    res.json(
-      requests.map((request) => ({
-        ...request,
-        preferred_date: serializeDate(request.preferred_date),
-        preferred_timezone: request.preferred_timezone || null,
-        created_at: serializeDate(request.created_at),
-        updated_at: serializeDate(request.updated_at),
-      }))
-    );
+    res.json(requests);
   } catch (err) {
     console.error("Error fetching service requests:", err);
     res.status(500).json({ error: "Failed to fetch service requests" });
@@ -867,8 +662,6 @@ app.delete("/service-requests/:id", requireAuth, async (req, res) => {
   }
 
   try {
-    await ensureServiceRequestSchema();
-
     const result = await sql`
       UPDATE service_requests
       SET status = 'cancelled', updated_at = NOW()
@@ -882,30 +675,40 @@ app.delete("/service-requests/:id", requireAuth, async (req, res) => {
       });
     }
 
-    const serializeDate = (value) => {
-      if (!value) return null;
-      if (value instanceof Date) return value.toISOString();
-      const parsed = new Date(value);
-      return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
-    };
-
-    const request = result[0];
-
     res.json({
       message: "Service request cancelled successfully",
-      request: {
-        ...request,
-        preferred_date: serializeDate(request?.preferred_date),
-        preferred_timezone: request?.preferred_timezone || null,
-        created_at: serializeDate(request?.created_at),
-        updated_at: serializeDate(request?.updated_at),
-      }
+      request: result[0]
     });
   } catch (err) {
     console.error("Error cancelling service request:", err);
     res.status(500).json({ error: "Failed to cancel service request" });
   }
 });
+
+//Automatically delete requests that have been cancelled for >=24 hours
+async function cleanUpCancelledRequests() {
+  try {
+    const result = await sql`
+      DELETE FROM service_requests
+      WHERE status = 'cancelled'
+      AND updated_at <= NOW() - INTERVAL '24 hours'
+      RETURNING id, title
+    `;
+
+    if (result.length > 0) {
+      console.log(`🧹 Auto-deleted ${result.length} cancelled service request(s):`);
+      result.forEach(r => console.log(`   • ID ${r.id} – ${r.title || "Untitled"}`));
+    }
+  } catch (err) {
+    console.error("❌ Failed to clean up cancelled service requests:", err);
+  }
+}
+
+// Run cleanup every hour (3 600 000 ms)
+setInterval(cleanUpCancelledRequests, 3600000);
+
+// Optionally run once on startup
+cleanUpCancelledRequests();
 
 // ✅ Start the server
 app.listen(PORT, () => console.log(`🚀 API running on http://localhost:${PORT}`));
