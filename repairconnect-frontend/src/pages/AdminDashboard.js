@@ -251,6 +251,12 @@ function AdminDashboard() {
     <div className={styles.container}>
       <h1 className={styles.title}>Admin Dashboard</h1>
       <div className={styles.logoutWrap}>
+	<button
+	  onClick={() => (window.location.href = "/admin/requests")}
+	  className={styles.navButton}
+	>
+	  View Requests
+	</button>
         <button onClick={confirmLogout} className={styles.logoutButton}>
           Log Out
         </button>
