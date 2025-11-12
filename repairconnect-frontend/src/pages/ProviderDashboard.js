@@ -60,21 +60,20 @@ const ProviderDashboard = () => {
           skills: Array.isArray(providerData.skills) ? providerData.skills : [],
           hourlyRate: providerData.hourlyRate ?? null,
         }));
-        
-        // Temporary mock jobs data
-        setJobs([
-          {
-            id: 1,
-            title: 'Fix Leaking Pipe',
-            description: 'Kitchen sink pipe is leaking. Need urgent repair.',
-            location: 'Downtown',
-            requiredRole: 'Plumber',
-            budget: 150
-          },
-        ]);
       } catch (error) {
         console.error('Error fetching provider data:', error);
         setError('Failed to load provider data. Please try refreshing the page.');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        console.log('Fetching provider jobs...');
+        const jobData = await api.getProviderJobs();
+        console.log('Provider jobs received:', jobData);
+        setJobs(Array.isArray(jobData) ? jobData : []);
+      } catch (jobError) {
+        console.error('Error fetching provider jobs:', jobError);
       } finally {
         setLoading(false);
       }

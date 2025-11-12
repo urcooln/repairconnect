@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import  jwtDecode from "jwt-decode";
+import jwtDecode from "jwt-decode";
 
-const API_BASE = "http://localhost:8080";
+const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:8081";
 
 export default function CustomerDashboard() {
   const navigate = useNavigate();
@@ -10,6 +10,7 @@ export default function CustomerDashboard() {
   const [activeSection, setActiveSection] = useState("overview");
   
   // Form state
+  const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [preferredDate, setPreferredDate] = useState("");
@@ -33,7 +34,7 @@ export default function CustomerDashboard() {
   ];
 
   useEffect(() => {
-    const token = localStorage.getItem("rc_token");
+    const token = localStorage.getItem("token");
     if (token) {
       try {
         const decoded = jwtDecode(token);
@@ -48,7 +49,7 @@ export default function CustomerDashboard() {
   async function loadRequests() {
     setLoading(true);
     try {
-      const token = localStorage.getItem("rc_token");
+      const token = localStorage.getItem("token");
       const res = await fetch(`${API_BASE}/service-requests/my-requests`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -69,13 +70,13 @@ export default function CustomerDashboard() {
     setMessage("");
     setError("");
 
-    if (!category || !description) {
+    if (!title.trim() || !category || !description.trim()) {
       setError("Please fill in all required fields");
       return;
     }
 
     try {
-      const token = localStorage.getItem("rc_token");
+      const token = localStorage.getItem("token");
       const res = await fetch(`${API_BASE}/service-requests`, {
         method: "POST",
         headers: {
@@ -83,8 +84,9 @@ export default function CustomerDashboard() {
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
+          title: title.trim(),
           category,
-          description,
+          description: description.trim(),
           preferred_date: preferredDate || null
         })
       });
@@ -93,6 +95,7 @@ export default function CustomerDashboard() {
 
       if (res.ok) {
         setMessage("✅ Service request submitted successfully!");
+        setTitle("");
         setCategory("");
         setDescription("");
         setPreferredDate("");
@@ -112,7 +115,7 @@ export default function CustomerDashboard() {
     }
 
     try {
-      const token = localStorage.getItem("rc_token");
+      const token = localStorage.getItem("token");
       const res = await fetch(`${API_BASE}/service-requests/${requestId}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
@@ -132,7 +135,7 @@ export default function CustomerDashboard() {
   }
 
   function handleLogout() {
-    localStorage.removeItem("rc_token");
+    localStorage.removeItem("token");
     navigate("/");
   }
 
@@ -409,6 +412,38 @@ export default function CustomerDashboard() {
               <form onSubmit={handleSubmit}>
                 <div style={{ marginBottom: "24px" }}>
                   <label style={{ display: "block", marginBottom: "10px", fontWeight: "600", color: "#374151", fontSize: "15px" }}>
+                    Title *
+                  </label>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    required
+                    placeholder="Brief summary, e.g., 'Broken AC unit'"
+                    style={{
+                      width: "100%",
+                      padding: "14px 16px",
+                      fontSize: "16px",
+                      borderRadius: "10px",
+                      border: "2px solid #e5e7eb",
+                      backgroundColor: "#f9fafb",
+                      color: "#374151",
+                      transition: "all 0.2s ease",
+                      outline: "none"
+                    }}
+                    onFocus={(e) => {
+                      e.target.style.borderColor = "#3b82f6";
+                      e.target.style.backgroundColor = "white";
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.borderColor = "#e5e7eb";
+                      e.target.style.backgroundColor = "#f9fafb";
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: "24px" }}>
+                  <label style={{ display: "block", marginBottom: "10px", fontWeight: "600", color: "#374151", fontSize: "15px" }}>
                     Category *
                   </label>
                   <select
@@ -641,8 +676,11 @@ export default function CustomerDashboard() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
                       <div style={{ flex: 1 }}>
                         <h3 style={{ margin: "0 0 12px 0", color: "#1f2937", fontSize: "22px", fontWeight: "700" }}>
-                          {req.category}
+                          {req.title || req.category}
                         </h3>
+                        <p style={{ margin: "0 0 6px 0", color: "#6b7280", fontSize: "14px" }}>
+                          <strong style={{ color: "#374151" }}>Category:</strong> {req.category}
+                        </p>
                         <p style={{ margin: "0 0 16px 0", color: "#6b7280", lineHeight: "1.6", fontSize: "15px" }}>
                           {req.description}
                         </p>

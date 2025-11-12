@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useDropzone } from 'react-dropzone';
 import { useNavigate } from 'react-router-dom';
 import styles from '../pages/ProviderDashboard.module.css';
@@ -49,6 +50,22 @@ const ProfileSection = ({ provider, onSave }) => {
   useEffect(() => {
     resetForm();
   }, [resetForm]);
+  
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return undefined;
+    }
+
+    if (isEditing) {
+      document.body.classList.add('modal-open');
+    } else {
+      document.body.classList.remove('modal-open');
+    }
+
+    return () => {
+      document.body.classList.remove('modal-open');
+    };
+  }, [isEditing]);
 
   const handleLogout = () => {
     localStorage.clear();
@@ -247,116 +264,119 @@ const ProfileSection = ({ provider, onSave }) => {
         </div>
       </div>
 
-      {isEditing && (
-        <div className={styles.editProfileModal}>
-          <h3 className={styles.modalTitle}>Edit Your Profile</h3>
+      {isEditing && typeof document !== 'undefined' && createPortal(
+        <div className={styles.editProfileOverlay}>
+          <div className={styles.editProfileModal}>
+            <h3 className={styles.modalTitle}>Edit Your Profile</h3>
 
-          <div className={styles.editFormRow}>
-            <label htmlFor="first-name">First Name</label>
-            <input
-              id="first-name"
-              type="text"
-              value={formValues.firstName}
-              onChange={handleInputChange('firstName')}
-              placeholder="e.g. Alex"
-            />
-          </div>
+            <div className={styles.editFormRow}>
+              <label htmlFor="first-name">First Name</label>
+              <input
+                id="first-name"
+                type="text"
+                value={formValues.firstName}
+                onChange={handleInputChange('firstName')}
+                placeholder="e.g. Alex"
+              />
+            </div>
 
-          <div className={styles.editFormRow}>
-            <label htmlFor="last-name">Last Name</label>
-            <input
-              id="last-name"
-              type="text"
-              value={formValues.lastName}
-              onChange={handleInputChange('lastName')}
-              placeholder="e.g. Johnson"
-            />
-          </div>
+            <div className={styles.editFormRow}>
+              <label htmlFor="last-name">Last Name</label>
+              <input
+                id="last-name"
+                type="text"
+                value={formValues.lastName}
+                onChange={handleInputChange('lastName')}
+                placeholder="e.g. Johnson"
+              />
+            </div>
 
-          <div className={styles.editFormRow}>
-            <label htmlFor="company">Company</label>
-            <input
-              id="company"
-              type="text"
-              value={formValues.company}
-              onChange={handleInputChange('company')}
-              placeholder="Your business name"
-            />
-          </div>
+            <div className={styles.editFormRow}>
+              <label htmlFor="company">Company</label>
+              <input
+                id="company"
+                type="text"
+                value={formValues.company}
+                onChange={handleInputChange('company')}
+                placeholder="Your business name"
+              />
+            </div>
 
-          <div className={styles.editFormRow}>
-            <label htmlFor="hourly-rate">Hourly Rate</label>
-            <input
-              id="hourly-rate"
-              type="number"
-              min="0"
-              step="0.01"
-              value={formValues.hourlyRate}
-              onChange={handleInputChange('hourlyRate')}
-              placeholder="e.g. 75.00"
-            />
-          </div>
+            <div className={styles.editFormRow}>
+              <label htmlFor="hourly-rate">Hourly Rate</label>
+              <input
+                id="hourly-rate"
+                type="number"
+                min="0"
+                step="0.01"
+                value={formValues.hourlyRate}
+                onChange={handleInputChange('hourlyRate')}
+                placeholder="e.g. 75.00"
+              />
+            </div>
 
-          <div className={styles.editFormRow}>
-            <label htmlFor="skills">Skills (comma separated)</label>
-            <input
-              id="skills"
-              type="text"
-              value={formValues.skillsInput}
-              onChange={handleInputChange('skillsInput')}
-              placeholder="e.g. Plumbing, Emergency Repairs"
-            />
-          </div>
+            <div className={styles.editFormRow}>
+              <label htmlFor="skills">Skills (comma separated)</label>
+              <input
+                id="skills"
+                type="text"
+                value={formValues.skillsInput}
+                onChange={handleInputChange('skillsInput')}
+                placeholder="e.g. Plumbing, Emergency Repairs"
+              />
+            </div>
 
-          <div className={styles.editFormRow}>
-            <label htmlFor="bio">About You</label>
-            <textarea
-              id="bio"
-              rows="3"
-              value={formValues.bio}
-              onChange={handleInputChange('bio')}
-              placeholder="Tell customers more about your experience"
-            />
-          </div>
+            <div className={styles.editFormRow}>
+              <label htmlFor="bio">About You</label>
+              <textarea
+                id="bio"
+                rows="3"
+                value={formValues.bio}
+                onChange={handleInputChange('bio')}
+                placeholder="Tell customers more about your experience"
+              />
+            </div>
 
-          <div className={styles.rolesSection}>
-            <h4>Select Your Services</h4>
-            <div className={styles.rolesList}>
-              {AVAILABLE_ROLES.map((role) => (
-                <button
-                  key={role}
-                  type="button"
-                  onClick={() => toggleRole(role)}
-                  className={`${styles.roleChip} ${
-                    selectedRoles.includes(role) ? styles.roleChipActive : ''
-                  }`}
-                >
-                  {role}
-                </button>
-              ))}
+            <div className={styles.rolesSection}>
+              <h4>Select Your Services</h4>
+              <div className={styles.rolesList}>
+                {AVAILABLE_ROLES.map((role) => (
+                  <button
+                    key={role}
+                    type="button"
+                    onClick={() => toggleRole(role)}
+                    className={`${styles.roleChip} ${
+                      selectedRoles.includes(role) ? styles.roleChipActive : ''
+                    }`}
+                  >
+                    {role}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {saveError && <p className={styles.errorText}>{saveError}</p>}
+
+            <div className={styles.formActions}>
+              <button
+                className={styles.editButton}
+                onClick={handleManualSave}
+                disabled={isSaving}
+              >
+                {isSaving ? 'Saving...' : 'Save Profile'}
+              </button>
+              <button
+                className={styles.cancelButton}
+                type="button"
+                onClick={handleCancel}
+                disabled={isSaving}
+              >
+                Cancel
+              </button>
             </div>
           </div>
-
-          {saveError && <p className={styles.errorText}>{saveError}</p>}
-
-          <div className={styles.formActions}>
-            <button
-              className={styles.editButton}
-              onClick={handleManualSave}
-              disabled={isSaving}
-            >
-              {isSaving ? 'Saving...' : 'Save Profile'}
-            </button>
-            <button
-              className={styles.cancelButton}
-              type="button"
-              onClick={handleCancel}
-              disabled={isSaving}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -10,7 +10,7 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 32px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .pageHeader {
@@ -328,20 +328,28 @@
   border-color: transparent;
 }
 
-.editProfileModal {
+.editProfileOverlay {
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 9999;
+  backdrop-filter: blur(2px);
+}
+
+.editProfileModal {
   background: white;
-  padding: 20px;
-  border-radius: 10px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-  max-width: 500px;
-  width: 90%;
-  max-height: 80vh;
+  padding: 32px;
+  border-radius: 20px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.3);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  width: min(560px, 100%);
+  max-height: 90vh;
   overflow-y: auto;
-  z-index: 1000;
+  position: relative;
 }
 
 .modalTitle {
@@ -504,12 +512,14 @@
   flex-direction: column;
   gap: 16px;
   transition: box-shadow 0.25s ease, transform 0.25s ease;
+  transform: translateY(0);
 }
 
 .jobCard:hover {
   box-shadow: 0 24px 44px rgba(15, 23, 42, 0.18);
-  transform: translateY(-4px);
+  transform: translateY(0);
 }
+
 
 .jobCardHeader {
   display: flex;
@@ -570,6 +580,12 @@
   opacity: 0.8;
 }
 
+.jobTagTimezone {
+  margin-left: 4px;
+  font-size: 0.78rem;
+  opacity: 0.8;
+}
+
 .jobTagLocation {
   background: rgba(34, 197, 94, 0.12);
   color: #15803d;
@@ -614,6 +630,8 @@
 
   .topSection,
   .jobsSection {
+    position: relative;
+    z-index:  1;
     padding: 20px;
   }
 
@@ -740,4 +758,8 @@
   .stats {
     grid-template-columns: 1fr;
   }
+}
+
+body.modal-open {
+  overflow: hidden;
 }
