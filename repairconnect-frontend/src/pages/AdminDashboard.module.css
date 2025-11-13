@@ -157,6 +157,15 @@
   white-space: nowrap;
 }
 
+.titleCell {
+  max-width: 120px;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.4;
+  vertical-align: top;
+}
+
 .descriptionCell {
   max-width: 250px;
   white-space: normal;
