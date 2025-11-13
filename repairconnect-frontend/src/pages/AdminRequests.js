@@ -11,6 +11,8 @@ function AdminRequests() {
 
   //Modal management
   const [logoutVisible, setLogoutVisible] = useState(false);
+  const [deleteVisible, setDeleteVisible] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState(null);
 
   const token = localStorage.getItem("token");
 
@@ -50,28 +52,35 @@ function AdminRequests() {
     window.location.href = "/";
   }
 
+  // ✅ Open delete confirmation modal
+  function confirmDelete(request) {
+    setSelectedRequest(request);
+    setDeleteVisible(true);
+  }
+
   // ✅ Handle Delete Request
-  async function handleDeleteRequest(requestId) {
-    if (!token) return;
-    const confirmDelete = window.confirm("Are you sure you want to delete this request?");
-    if (!confirmDelete) return;
+  async function handleDeleteRequest() {
+    if (!token || !selectedRequest) return;
 
     try {
-      setActioningId(requestId);
-      const res = await fetch(`${API_BASE}/admin/requests/${requestId}`, {
+      setActioningId(selectedRequest.id);
+
+      const res = await fetch(`${API_BASE}/admin/requests/${selectedRequest.id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!res.ok) throw new Error("Failed to delete request");
 
-      // Remove deleted request from UI
-      setRequests((prev) => prev.filter((req) => req.id !== requestId));
+      // Remove from local list
+      setRequests((prev) => prev.filter((req) => req.id !== selectedRequest.id));
     } catch (err) {
       console.error("Failed to delete request:", err);
       setError(err.message || "Failed to delete request");
     } finally {
       setActioningId(null);
+      setDeleteVisible(false);
+      setSelectedRequest(null);
     }
   }
 
@@ -142,7 +151,7 @@ function AdminRequests() {
             <table className={styles.table}>
               <thead>
                 <tr className={styles.tableHeadRow}>
-                  {["ID", "Created By", "Request", "Description", "Status", "Actions"].map(
+                  {["ID", "Created By", "Request", "Category", "Description", "Status", "Actions"].map(
                     (th) => (
                       <th key={th} className={styles.tableHeader}>
                         {th}
@@ -156,11 +165,14 @@ function AdminRequests() {
                   requests.map((req) => (
                     <tr key={req.id}>
                       <td className={`${styles.tableCell} ${styles.idCell}`}>{req.id}</td>
-                      <td className={`${styles.tableCell} ${styles.roleCell}`}>
+                      <td className={`${styles.tableCell} ${styles.nameCell}`}>
                         {req.customer_name || "Database"}
                       </td>
-                      <td className={`${styles.tableCell} ${styles.nameCell}`}>
+                      <td className={`${styles.tableCell} ${styles.titleCell}`}>
                         {req.title || "—"}
+                      </td>
+                      <td className={`${styles.tableCell} ${styles.roleCell}`}>
+			                  {req.category || "—"}
                       </td>
                       <td className={`${styles.tableCell} ${styles.descriptionCell}`}>
                         {req.description || "—"}
@@ -171,7 +183,7 @@ function AdminRequests() {
                       <td className={`${styles.tableCell} ${styles.actionCell}`}>
                         <div className={styles.actionGroup}>
                           <button
-                            onClick={() => handleDeleteRequest(req.id)}
+                            onClick={() => confirmDelete(req)}
                             disabled={actioningId === req.id}
                             className={`${styles.actionButton} ${styles.deleteButton}`}
                           >
@@ -183,7 +195,7 @@ function AdminRequests() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: "center", padding: "10px" }}>
+                    <td colSpan="7" style={{ textAlign: "center", padding: "10px" }}>
                       No service requests found.
                     </td>
                   </tr>
@@ -194,6 +206,22 @@ function AdminRequests() {
         </section>
       )}
 
+      {/* Delete Modal */}
+      <Modal
+        visible={deleteVisible}
+        title="Delete Request"
+        color="#d32f2f"
+        message={
+          selectedRequest
+            ? `Are you sure you want to delete the request "${selectedRequest.title || "Untitled"}"?`
+            : "Are you sure you want to delete this request?"
+        }
+        onConfirm={handleDeleteRequest}
+        onCancel={() => setDeleteVisible(false)}
+        confirmLabel="Delete"
+      />
+
+      {/* Logout Modal */}
       <Modal
         visible={logoutVisible}
         title="Confirm Logout"
