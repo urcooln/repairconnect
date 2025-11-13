@@ -371,7 +371,7 @@ app.get("/admin/users", requireAuth, requireAdmin, async (req, res) => {
 app.get("/admin/requests", requireAuth, requireAdmin, async (req, res) => {
   try {
     const requests = await sql`
-      SELECT sr.id, u.name AS customer_name, sr.title, sr.description, sr.status
+      SELECT sr.id, u.name AS customer_name, sr.title, sr.category, sr.description, sr.status
       FROM service_requests sr LEFT JOIN users u ON sr.customer_id = u.id
       ORDER by id
     `;
