@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import styles from "./AdminDashboard.module.css";
+import { getHeaders } from '../services/api';
 
 const API_BASE = "http://localhost:8081";
 
@@ -26,7 +27,7 @@ function AdminDashboard() {
   const token = localStorage.getItem("token");
 
   useEffect(() => {
-    if (!token) {
+    if (!localStorage.getItem('token')) {
       setError("Missing token");
       setLoading(false);
       return;
@@ -36,7 +37,7 @@ function AdminDashboard() {
       try {
         setLoading(true);
         setError(null);
-        const headers = { Authorization: `Bearer ${token}` };
+        const headers = getHeaders();
 
         const [summaryRes, usersRes] = await Promise.all([
           fetch(`${API_BASE}/admin/summary`, { headers }),
@@ -89,7 +90,7 @@ function AdminDashboard() {
 
   // Handles the approval of a provider.
   async function handleApprove(userId) {
-    if (!token) return;
+    if (!localStorage.getItem('token')) return;
 
     try {
       setActioningId(userId);
@@ -97,9 +98,7 @@ function AdminDashboard() {
 
       const res = await fetch(`${API_BASE}/admin/users/${userId}/approve`, {
         method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: getHeaders(),
       });
 
       if (res.status === 401) throw new Error("Unauthorized");
@@ -134,8 +133,7 @@ function AdminDashboard() {
           : `${API_BASE}/admin/users/${confirmUser.id}/${confirmAction}`;
 
       const headers = {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
+        ...getHeaders(),
       };
 
       const body =

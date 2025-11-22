@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import Notifications from '../components/Notifications';
 import InvoiceCenter from '../components/InvoiceCenter';
-import { createInvoiceCheckout, markInvoicePaid } from '../services/api';
+import { createInvoiceCheckout, markInvoicePaid, getHeaders } from '../services/api';
 import { useNavigate } from "react-router-dom";
 import jwtDecode from "jwt-decode";
 
@@ -64,7 +64,7 @@ export default function CustomerDashboard() {
       if (!token) return;
       try {
         const res = await fetch(`${API_BASE}/customer/profile`, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: getHeaders()
         });
         if (res.ok) {
           const data = await res.json();
@@ -88,9 +88,8 @@ export default function CustomerDashboard() {
   async function loadRequests() {
     setLoading(true);
     try {
-      const token = localStorage.getItem("token");
       const res = await fetch(`${API_BASE}/service-requests/my-requests`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: getHeaders()
       });
       
       if (res.ok) {
@@ -115,13 +114,9 @@ export default function CustomerDashboard() {
     }
 
     try {
-      const token = localStorage.getItem("token");
       const res = await fetch(`${API_BASE}/service-requests`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
+        headers: getHeaders(),
         body: JSON.stringify({
           title: title.trim(),
           category,
@@ -154,10 +149,9 @@ export default function CustomerDashboard() {
     }
 
     try {
-      const token = localStorage.getItem("token");
       const res = await fetch(`${API_BASE}/service-requests/${requestId}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` }
+        headers: getHeaders()
       });
 
       if (res.ok) {
@@ -197,9 +191,8 @@ export default function CustomerDashboard() {
   const fetchProviders = async (q = '') => {
     setProvidersLoading(true);
     try {
-      const token = localStorage.getItem('token');
       const url = `${API_BASE}/providers${q ? `?q=${encodeURIComponent(q)}` : ''}`;
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(url, { headers: getHeaders() });
       if (!res.ok) {
         console.error('Failed to load providers', await res.text());
         setProviders([]);
@@ -222,8 +215,7 @@ export default function CustomerDashboard() {
   const fetchInvoices = async () => {
     setInvoicesLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE}/invoices`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_BASE}/invoices`, { headers: getHeaders() });
       if (!res.ok) throw new Error('Failed to fetch invoices');
       const data = await res.json();
       setInvoices(Array.isArray(data) ? data : []);
@@ -1068,7 +1060,7 @@ export default function CustomerDashboard() {
                   setProfileError('');
                   try {
                     const token = localStorage.getItem('token');
-                    const res = await fetch(`${API_BASE}/customer/profile`, { headers: { Authorization: `Bearer ${token}` } });
+                    const res = await fetch(`${API_BASE}/customer/profile`, { headers: getHeaders() });
                     if (!res.ok) throw new Error('Failed to load');
                     const data = await res.json();
                     setProfileFirstName(data.firstName || '');
@@ -1090,10 +1082,9 @@ export default function CustomerDashboard() {
                     if (profilePhoto && profilePhoto.length > 1000000) {
                       throw new Error('Photo is too large. Please choose a smaller image (<=1MB).');
                     }
-                    const token = localStorage.getItem('token');
                     const res = await fetch(`${API_BASE}/customer/profile`, {
                       method: 'PUT',
-                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                      headers: getHeaders(),
                       body: JSON.stringify({ firstName: profileFirstName, lastName: profileLastName, phone: profilePhone, photoUrl: profilePhoto, address: profileAddress })
                     });
                     if (!res.ok) {

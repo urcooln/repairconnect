@@ -1,0 +1,7 @@
+NOTICE:  column "category" of relation "service_requests" already exists, skipping
+NOTICE:  column "description" of relation "service_requests" already exists, skipping
+NOTICE:  column "preferred_date" of relation "service_requests" already exists, skipping
+NOTICE:  column "status" of relation "service_requests" already exists, skipping
+NOTICE:  column "created_at" of relation "service_requests" already exists, skipping
+NOTICE:  column "updated_at" of relation "service_requests" already exists, skipping
+ALTER TABLE

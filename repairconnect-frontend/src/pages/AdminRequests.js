@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { getHeaders } from "../services/api";
 import styles from "./AdminDashboard.module.css";
 
 const API_BASE = "http://localhost:8081";
@@ -15,19 +16,18 @@ function AdminRequests() {
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
 
-  const token = localStorage.getItem("token");
-
-  // ✅ Fetch service requests from backend
+  // ✅ Fetch service requests from backend (read token at effect time)
   useEffect(() => {
-    if (!token) return;
-
     async function fetchRequests() {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
       try {
         setLoading(true);
         setError(null);
 
         const res = await fetch(`${API_BASE}/admin/requests`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: getHeaders(),
         });
 
         if (!res.ok) throw new Error("Failed to fetch service requests");
@@ -46,7 +46,7 @@ function AdminRequests() {
     }
 
     fetchRequests();
-  }, [token]);
+  }, []);
 
   function confirmLogout() {
     setLogoutVisible(true);
@@ -65,14 +65,15 @@ function AdminRequests() {
 
   // ✅ Handle Delete Request
   async function handleDeleteRequest() {
-    if (!token || !selectedRequest) return;
+    const tokenNow = localStorage.getItem("token");
+    if (!tokenNow || !selectedRequest) return;
 
     try {
       setActioningId(selectedRequest.id);
 
       const res = await fetch(`${API_BASE}/admin/requests/${selectedRequest.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: getHeaders(),
       });
 
       if (!res.ok) throw new Error("Failed to delete request");
@@ -97,7 +98,7 @@ function AdminRequests() {
       setActioningId(requestId);
       const res = await fetch(`${API_BASE}/jobs/${requestId}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: getHeaders(),
         body: JSON.stringify({ status })
       });
       if (!res.ok) {
@@ -105,7 +106,7 @@ function AdminRequests() {
         throw new Error(data.error || 'Failed to change status');
       }
       // refresh list
-      const refreshed = await fetch(`${API_BASE}/admin/requests`, { headers: { Authorization: `Bearer ${token}` } });
+      const refreshed = await fetch(`${API_BASE}/admin/requests`, { headers: getHeaders() });
       if (refreshed.ok) {
         const data = await refreshed.json();
         setRequests(data);

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import * as api from '../services/api';
-import { createInvoiceCheckout } from '../services/api';
+import { createInvoiceCheckout, getHeaders } from '../services/api';
 
 const Notifications = () => {
   const [open, setOpen] = useState(false);
@@ -67,9 +67,8 @@ const Notifications = () => {
 
   const downloadInvoicePdf = async (invoiceId) => {
     try {
-      const token = localStorage.getItem('token');
       const res = await fetch(`${process.env.REACT_APP_API_BASE_URL || 'http://localhost:8081'}/invoices/${invoiceId}/pdf`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: getHeaders()
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));

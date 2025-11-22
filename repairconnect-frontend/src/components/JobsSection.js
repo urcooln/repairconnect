@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getHeaders } from '../services/api';
 import ReactDOM from 'react-dom';
 import styles from '../pages/ProviderDashboard.module.css';
 // Keep JobsSection focused on opportunities; job lifecycle (start/finish/invoice)
@@ -72,10 +73,9 @@ const JobsSection = ({ jobs = [], providerRoles = [], refreshJobs = null }) => {
 
   const updateJobStatus = async (job, newStatus) => {
     try {
-      const token = localStorage.getItem('token');
       const res = await fetch(`http://localhost:8081/provider/jobs/${job.id}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: getHeaders(),
         body: JSON.stringify({ status: newStatus })
       });
       if (!res.ok) {

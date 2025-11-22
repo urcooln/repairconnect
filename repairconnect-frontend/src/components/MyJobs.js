@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import styles from '../pages/ProviderDashboard.module.css';
 import * as api from '../services/api';
+import { getHeaders } from '../services/api';
 
 const MyJobs = () => {
   const [jobs, setJobs] = useState([]);
@@ -92,10 +93,9 @@ const MyJobs = () => {
     if (!window.confirm('Are you sure you want to end this job? It will be archived and no longer appear in My Jobs.')) return;
     setPosting(true);
     try {
-      const token = localStorage.getItem('token');
       const res = await fetch(`http://localhost:8081/jobs/${jobId}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: getHeaders(),
         body: JSON.stringify({ status: 'closed' })
       });
       if (!res.ok) {
@@ -114,10 +114,9 @@ const MyJobs = () => {
   const updateJobStatus = async (jobId, status) => {
     setPosting(true);
     try {
-      const token = localStorage.getItem('token');
       const res = await fetch(`http://localhost:8081/jobs/${jobId}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: getHeaders(),
         body: JSON.stringify({ status })
       });
       if (!res.ok) {

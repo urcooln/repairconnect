@@ -2,13 +2,13 @@
 const API_URL = "http://localhost:8081"; // Test backend server port
 
 // Helper to attach auth headers
-function getHeaders() {
+export function getHeaders() {
   const token = localStorage.getItem('token');
-  console.log('Sending token:', token); // ✅ Add this line
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`
-  };
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
 }
 
 export async function getRequests() {
@@ -77,11 +77,13 @@ export const uploadProviderPhoto = async (photoFile) => {
   const formData = new FormData();
   formData.append('photo', photoFile);
 
+  const token = localStorage.getItem('token');
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   const res = await fetch(`${API_URL}/provider/photo`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
-    },
+    headers,
     body: formData
   });
   
@@ -94,9 +96,7 @@ export const uploadProviderPhoto = async (photoFile) => {
 
 export const getProviderJobs = async () => {
   const res = await fetch(`${API_URL}/provider/jobs`, {
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
-    }
+    headers: getHeaders()
   });
   
   if (!res.ok) {
@@ -113,11 +113,13 @@ export const postJobUpdate = async (jobId, { message, imageUrl, file } = {}) => 
     if (message) fd.append('message', message);
     fd.append('image', file);
 
+    const token = localStorage.getItem('token');
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+
     const res = await fetch(`${API_URL}/provider/jobs/${jobId}/updates`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`
-      },
+      headers,
       body: fd
     });
 
