@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import Notifications from '../components/Notifications';
+import InvoiceCenter from '../components/InvoiceCenter';
+import { createInvoiceCheckout, markInvoicePaid } from '../services/api';
 import { useNavigate } from "react-router-dom";
 import jwtDecode from "jwt-decode";
 
@@ -20,6 +23,16 @@ export default function CustomerDashboard() {
   // Requests list state
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileFirstName, setProfileFirstName] = useState('');
+  const [profileLastName, setProfileLastName] = useState('');
+  const [profilePhone, setProfilePhone] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
+  const [profileAddress, setProfileAddress] = useState('');
+  const [profilePhoto, setProfilePhoto] = useState(null);
+  const [profileSuccess, setProfileSuccess] = useState('');
 
   const categories = [
     "Plumbing",
@@ -44,7 +57,33 @@ export default function CustomerDashboard() {
       }
     }
     loadRequests();
+    // load profile basic info
+    // don't block the dashboard load
+    (async () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      try {
+        const res = await fetch(`${API_BASE}/customer/profile`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setProfileFirstName(data.firstName || '');
+          setProfileLastName(data.lastName || '');
+          setProfilePhone(data.phone || '');
+          setProfileEmail(data.email || '');
+          setProfileAddress(data.address || '');
+          setProfilePhoto(data.photoUrl || null);
+        }
+      } catch (err) {
+        // ignore silently
+      }
+    })();
   }, []);
+
+  useEffect(() => {
+    if (activeSection === 'payment-history') fetchInvoices();
+  }, [activeSection]);
 
   async function loadRequests() {
     setLoading(true);
@@ -143,10 +182,101 @@ export default function CustomerDashboard() {
     { id: "overview", label: "Overview", icon: "📊", active: true },
     { id: "submit", label: "Submit Request", icon: "➕", active: true },
     { id: "my-requests", label: "My Requests", icon: "📋", active: true },
-    { id: "browse-providers", label: "Browse Providers", icon: "🔍", active: false },
+    { id: "browse-providers", label: "Browse Providers", icon: "🔍", active: true },
     { id: "payment-history", label: "Payment History", icon: "💳", active: false },
-    { id: "profile", label: "Profile Settings", icon: "⚙️", active: false }
+    { id: "profile", label: "Profile Settings", icon: "⚙️", active: true }
   ];
+
+  // browse providers state
+  const [providers, setProviders] = useState([]);
+  const [providersLoading, setProvidersLoading] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState(null);
+  const [providerQuery, setProviderQuery] = useState('');
+
+  // fetch providers helper
+  const fetchProviders = async (q = '') => {
+    setProvidersLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const url = `${API_BASE}/providers${q ? `?q=${encodeURIComponent(q)}` : ''}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) {
+        console.error('Failed to load providers', await res.text());
+        setProviders([]);
+        return;
+      }
+      const data = await res.json();
+      setProviders(data);
+    } catch (err) {
+      console.error('Failed to load providers', err);
+      setProviders([]);
+    } finally {
+      setProvidersLoading(false);
+    }
+  };
+
+  // Payment history (invoices)
+  const [invoices, setInvoices] = useState([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
+
+  const fetchInvoices = async () => {
+    setInvoicesLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE}/invoices`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error('Failed to fetch invoices');
+      const data = await res.json();
+      setInvoices(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to load invoices', err);
+      setInvoices([]);
+    } finally {
+      setInvoicesLoading(false);
+    }
+  };
+
+  const handlePay = async (invoiceId) => {
+    if (!window.confirm('Proceed to pay this invoice?')) return;
+    try {
+      const data = await createInvoiceCheckout(invoiceId);
+      if (data && data.url) {
+        // redirect to Stripe Checkout
+        window.location.href = data.url;
+        return;
+      }
+
+      if (data && data.debugUrl) {
+        try { await navigator.clipboard.writeText(data.debugUrl); } catch (e) {}
+        const openNow = window.confirm('Stripe not configured locally — debug pay link copied. Open it now to mark the invoice paid?');
+        if (openNow) window.open(data.debugUrl, '_blank');
+        // refresh list after short delay
+        setTimeout(() => fetchInvoices(), 800);
+        return;
+      }
+
+      // if no URL returned, fallback to marking as paid locally
+      if (window.confirm('No checkout URL returned. Mark invoice as paid locally?')) {
+        await markInvoicePaid(invoiceId);
+        await fetchInvoices();
+        alert('Invoice marked as paid — provider notified');
+      }
+    } catch (err) {
+      console.error('Payment failed or Stripe not available', err);
+      if (err && (err.status === 501 || /stripe/i.test(err.message || ''))) {
+        if (window.confirm('Stripe is not configured. Mark invoice as paid locally instead?')) {
+          try {
+            await markInvoicePaid(invoiceId);
+            await fetchInvoices();
+            alert('Invoice marked as paid — provider notified');
+          } catch (e) {
+            alert(e.message || 'Failed to mark invoice paid');
+          }
+        }
+      } else {
+        alert(err.message || 'Payment attempt failed');
+      }
+    }
+  };
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", backgroundColor: "#f0f2f5", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif" }}>
@@ -249,6 +379,10 @@ export default function CustomerDashboard() {
 
       {/* Main Content Area */}
       <div style={{ marginLeft: "280px", flex: 1, padding: "40px 50px", minHeight: "100vh" }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12, gap: 8 }}>
+          <Notifications />
+          <InvoiceCenter />
+        </div>
         
         {/* Overview Section */}
         {activeSection === "overview" && (
@@ -748,65 +882,239 @@ export default function CustomerDashboard() {
 
         {/* Placeholder Sections */}
         {activeSection === "browse-providers" && (
-          <div style={{
-            backgroundColor: "white",
-            padding: "80px 40px",
-            borderRadius: "16px",
-            textAlign: "center",
-            boxShadow: "0 2px 12px rgba(0,0,0,0.08)"
-          }}>
-            <div style={{ fontSize: "72px", marginBottom: "20px" }}>🔍</div>
-            <h1 style={{ margin: "0 0 16px 0", fontSize: "28px", fontWeight: "700", color: "#1f2937" }}>
-              Browse Providers
-            </h1>
-            <p style={{ fontSize: "17px", color: "#6b7280", margin: "0 0 8px 0", maxWidth: "500px", marginLeft: "auto", marginRight: "auto" }}>
-              Coming soon! You'll be able to browse and select service providers here.
-            </p>
-            <p style={{ color: "#9ca3af", fontSize: "14px" }}>
-              🔒 This feature is currently under development
-            </p>
+          <div style={{ backgroundColor: "white", padding: "24px", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Browse Providers</h2>
+                <p style={{ margin: '6px 0 0 0', color: '#6b7280' }}>Find local providers and view their public profiles.</p>
+              </div>
+              <div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input value={providerQuery} onChange={(e) => setProviderQuery(e.target.value)} placeholder="Search by name, company or skill" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', width: 280 }} />
+                  <button onClick={() => fetchProviders(providerQuery)} style={{ padding: '8px 12px', borderRadius: 8, background: '#2563eb', color: 'white', border: 'none' }}>{providersLoading ? 'Loading...' : 'Search'}</button>
+                  <button onClick={() => { setProviderQuery(''); fetchProviders(''); }} style={{ padding: '8px 12px', borderRadius: 8, background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb' }}>Clear</button>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+              {providers.length === 0 && !providersLoading && (
+                <div style={{ gridColumn: '1/-1', padding: 28, textAlign: 'center', color: '#6b7280' }}>
+                  No providers loaded. Click "Refresh" to load available providers.
+                </div>
+              )}
+
+              {providers.map((p) => (
+                <div key={p.id} style={{ background: '#fff', padding: 16, borderRadius: 12, boxShadow: '0 1px 8px rgba(0,0,0,0.06)', display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{ width: 64, height: 64, borderRadius: 8, overflow: 'hidden', background: '#f3f4f6', flex: '0 0 64px' }}>
+                    {p.photoUrl ? <img src={p.photoUrl} alt="provider" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>No photo</div>}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{`${p.firstName || ''} ${p.lastName || ''}`.trim() || p.email}</div>
+                        <div style={{ color: '#6b7280', fontSize: 13 }}>{p.company || ''}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => setSelectedProvider(p)} style={{ padding: '8px 12px', borderRadius: 8, background: '#10b981', color: 'white', border: 'none' }}>View</button>
+                      </div>
+                    </div>
+                    {p.bio && <div style={{ marginTop: 8, color: '#374151', fontSize: 13 }}>{p.bio.slice(0,180)}{p.bio.length>180?'...':''}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+              {/* auto-load providers when browse tab is opened */}
+
+            {/* Provider modal */}
+            {selectedProvider && (
+              <div style={{ position: 'fixed', left: 0, top: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={(e) => { if (e.target === e.currentTarget) setSelectedProvider(null); }}>
+                <div style={{ width: 720, maxWidth: '94%', background: 'white', borderRadius: 12, padding: 20 }}>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <div style={{ width: 84, height: 84, borderRadius: 8, overflow: 'hidden', background: '#f3f4f6' }}>
+                      {selectedProvider.photoUrl ? <img src={selectedProvider.photoUrl} alt="provider" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>No photo</div>}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 18, fontWeight: 700 }}>{`${selectedProvider.firstName || ''} ${selectedProvider.lastName || ''}`.trim() || selectedProvider.email}</div>
+                      <div style={{ color: '#6b7280', marginTop: 6 }}>{selectedProvider.company || ''}</div>
+                      {selectedProvider.skills && selectedProvider.skills.length > 0 && <div style={{ marginTop: 8, color: '#374151', fontSize: 13 }}>Skills: {selectedProvider.skills.join(', ')}</div>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      {selectedProvider.phone ? (
+                        <a href={`tel:${selectedProvider.phone}`} style={{ padding: '8px 12px', background: '#2563eb', color: 'white', borderRadius: 8, textDecoration: 'none' }}>Call</a>
+                      ) : null}
+                      {selectedProvider.email ? (
+                        <button onClick={() => { const subject = encodeURIComponent('Inquiry about your services'); const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(selectedProvider.email)}&su=${subject}`; window.open(gmailUrl, '_blank'); }} style={{ padding: '8px 12px', borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb' }}>Email</button>
+                      ) : null}
+                      <button onClick={() => setSelectedProvider(null)} style={{ padding: '8px 12px', borderRadius: 8, background: '#ef4444', color: 'white', border: 'none' }}>Close</button>
+                    </div>
+                  </div>
+
+                  {selectedProvider.bio && <div style={{ marginTop: 12, color: '#374151' }}>{selectedProvider.bio}</div>}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
+        {/* auto-fetch providers when Browse Providers tab selected */}
+        {
+          activeSection === 'browse-providers' && !providersLoading && providers.length === 0 && (() => { fetchProviders().catch(() => {}); return null; })()
+        }
+
         {activeSection === "payment-history" && (
-          <div style={{
-            backgroundColor: "white",
-            padding: "80px 40px",
-            borderRadius: "16px",
-            textAlign: "center",
-            boxShadow: "0 2px 12px rgba(0,0,0,0.08)"
-          }}>
-            <div style={{ fontSize: "72px", marginBottom: "20px" }}>💳</div>
-            <h1 style={{ margin: "0 0 16px 0", fontSize: "28px", fontWeight: "700", color: "#1f2937" }}>
-              Payment History
-            </h1>
-            <p style={{ fontSize: "17px", color: "#6b7280", margin: "0 0 8px 0", maxWidth: "500px", marginLeft: "auto", marginRight: "auto" }}>
-              Coming soon! View all your payment transactions and invoices here.
-            </p>
-            <p style={{ color: "#9ca3af", fontSize: "14px" }}>
-              🔒 This feature is currently under development
-            </p>
+          <div style={{ backgroundColor: 'white', padding: '28px', borderRadius: '12px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Payment History</h2>
+                <p style={{ margin: '6px 0 0 0', color: '#6b7280' }}>All invoices you received and payments made.</p>
+              </div>
+              <div>
+                <button onClick={() => fetchInvoices()} style={{ padding: '8px 12px', borderRadius: 8, background: '#2563eb', color: 'white', border: 'none' }}>Refresh</button>
+              </div>
+            </div>
+
+            {invoicesLoading ? (
+              <div style={{ padding: 24, textAlign: 'center', color: '#6b7280' }}>Loading invoices...</div>
+            ) : invoices.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center', color: '#6b7280' }}>No invoices found.</div>
+            ) : (
+              <div style={{ display: 'grid', gap: 12 }}>
+                {invoices.map(inv => (
+                  <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 10, border: '1px solid #e5e7eb' }}>
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{inv.serviceTitle || `Request #${inv.serviceRequestId}`}</div>
+                      <div style={{ color: '#6b7280', fontSize: 13 }}>{inv.notes || ''}</div>
+                      {inv.paid ? <div style={{ marginTop: 6, display: 'inline-block', padding: '4px 8px', background: '#ecfccb', color: '#14532d', borderRadius: 8, fontWeight: 700, fontSize: 12 }}>Paid</div> : null}
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontWeight: 800, fontSize: 16 }}>{inv.currency || 'USD'} {Number(inv.amount).toFixed(2)}</div>
+                      <div style={{ color: '#9ca3af', fontSize: 13 }}>{inv.createdAt ? new Date(inv.createdAt).toLocaleString() : ''}</div>
+                      {!inv.paid && (
+                        <div style={{ marginTop: 8 }}>
+                          <button onClick={() => handlePay(inv.id)} style={{ padding: '8px 12px', borderRadius: 8, background: '#10b981', color: 'white', border: 'none' }}>Pay</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
         {activeSection === "profile" && (
-          <div style={{
-            backgroundColor: "white",
-            padding: "80px 40px",
-            borderRadius: "16px",
-            textAlign: "center",
-            boxShadow: "0 2px 12px rgba(0,0,0,0.08)"
-          }}>
-            <div style={{ fontSize: "72px", marginBottom: "20px" }}>⚙️</div>
-            <h1 style={{ margin: "0 0 16px 0", fontSize: "28px", fontWeight: "700", color: "#1f2937" }}>
-              Profile Settings
-            </h1>
-            <p style={{ fontSize: "17px", color: "#6b7280", margin: "0 0 8px 0", maxWidth: "500px", marginLeft: "auto", marginRight: "auto" }}>
-              Coming soon! Manage your profile, saved addresses, and preferences here.
-            </p>
-            <p style={{ color: "#9ca3af", fontSize: "14px" }}>
-              🔒 This feature is currently under development
-            </p>
+          <div style={{ backgroundColor: 'white', padding: '40px', borderRadius: '16px', boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
+            <h1 style={{ margin: '0 0 24px 0', fontSize: '24px', fontWeight: '700', color: '#1f2937' }}>Profile Settings</h1>
+
+            <div style={{ maxWidth: 720, margin: '0 auto' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>Photo</label>
+                  <div style={{ width: 100, height: 100, borderRadius: 8, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#fff' }}>
+                    {profilePhoto ? (
+                      // if photo is base64 or URL
+                      // eslint-disable-next-line jsx-a11y/img-redundant-alt
+                      <img src={profilePhoto} alt="Profile photo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#9ca3af' }}>No photo</div>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <input type="file" accept="image/*" onChange={async (e) => {
+                      const file = e.target.files && e.target.files[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = () => setProfilePhoto(reader.result.toString());
+                      reader.readAsDataURL(file);
+                    }} />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>First name</label>
+                  <input type="text" value={profileFirstName} onChange={(e) => setProfileFirstName(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>Last name</label>
+                <input type="text" value={profileLastName} onChange={(e) => setProfileLastName(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
+              </div>
+
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>Email</label>
+                <input type="email" value={profileEmail} readOnly disabled style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#f9fafb' }} />
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>Phone</label>
+                <input type="tel" value={profilePhone} onChange={(e) => setProfilePhone(e.target.value)} placeholder="e.g. +1 555 123 4567" style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>Address</label>
+                <input type="text" value={profileAddress} onChange={(e) => setProfileAddress(e.target.value)} placeholder="Street, City, State, ZIP" style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
+              </div>
+
+              {profileError && (<div style={{ marginBottom: 12, color: '#b91c1c' }}>{profileError}</div>)}
+              {profileSuccess && (<div style={{ marginBottom: 12, color: '#065f46' }}>{profileSuccess}</div>)}
+
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                <button onClick={async () => {
+                  // reload profile
+                  setProfileLoading(true);
+                  setProfileError('');
+                  try {
+                    const token = localStorage.getItem('token');
+                    const res = await fetch(`${API_BASE}/customer/profile`, { headers: { Authorization: `Bearer ${token}` } });
+                    if (!res.ok) throw new Error('Failed to load');
+                    const data = await res.json();
+                    setProfileFirstName(data.firstName || '');
+                    setProfileLastName(data.lastName || '');
+                    setProfilePhone(data.phone || '');
+                    setProfileEmail(data.email || '');
+                    setProfileAddress(data.address || '');
+                    setProfilePhoto(data.photoUrl || null);
+                  } catch (err) {
+                    setProfileError('Failed to reload profile');
+                  } finally { setProfileLoading(false); }
+                }} className="" style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#f3f4f6' }}>Reload</button>
+
+                <button onClick={async () => {
+                  setProfileSaving(true);
+                  setProfileError('');
+                  try {
+                    // guard against very large base64 images which can fail the network request
+                    if (profilePhoto && profilePhoto.length > 1000000) {
+                      throw new Error('Photo is too large. Please choose a smaller image (<=1MB).');
+                    }
+                    const token = localStorage.getItem('token');
+                    const res = await fetch(`${API_BASE}/customer/profile`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                      body: JSON.stringify({ firstName: profileFirstName, lastName: profileLastName, phone: profilePhone, photoUrl: profilePhoto, address: profileAddress })
+                    });
+                    if (!res.ok) {
+                      const data = await res.json();
+                      throw new Error(data.error || 'Failed to save');
+                    }
+                    const data = await res.json();
+                    // reflect name in sidebar
+                    const display = `${data.firstName || ''} ${data.lastName || ''}`.trim() || undefined;
+                    if (display) setUserName(display);
+                    setProfileSuccess('Profile saved');
+                    setTimeout(() => setProfileSuccess(''), 3500);
+                  } catch (err) {
+                    console.error(err);
+                    setProfileError(err.message || 'Failed to save profile');
+                  } finally { setProfileSaving(false); }
+                }} style={{ padding: '10px 18px', borderRadius: 8, background: '#2563eb', color: 'white', border: 'none' }} disabled={profileSaving}>
+                  {profileSaving ? 'Saving...' : 'Save Profile'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

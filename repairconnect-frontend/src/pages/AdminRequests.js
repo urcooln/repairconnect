@@ -8,6 +8,7 @@ function AdminRequests() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actioningId, setActioningId] = useState(null);
+  const [selectedStatuses, setSelectedStatuses] = useState({});
 
   //Modal management
   const [logoutVisible, setLogoutVisible] = useState(false);
@@ -32,6 +33,10 @@ function AdminRequests() {
         if (!res.ok) throw new Error("Failed to fetch service requests");
         const data = await res.json();
         setRequests(data);
+        // initialize selected statuses map
+        const map = {};
+        data.forEach((r) => (map[r.id] = r.status || 'pending'));
+        setSelectedStatuses(map);
       } catch (err) {
         console.error("Error fetching service requests:", err);
         setError(err.message);
@@ -81,6 +86,38 @@ function AdminRequests() {
       setActioningId(null);
       setDeleteVisible(false);
       setSelectedRequest(null);
+    }
+  }
+
+  async function handleChangeStatus(requestId) {
+    const token = localStorage.getItem('token');
+    const status = selectedStatuses[requestId];
+    if (!token || !status) return;
+    try {
+      setActioningId(requestId);
+      const res = await fetch(`${API_BASE}/jobs/${requestId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to change status');
+      }
+      // refresh list
+      const refreshed = await fetch(`${API_BASE}/admin/requests`, { headers: { Authorization: `Bearer ${token}` } });
+      if (refreshed.ok) {
+        const data = await refreshed.json();
+        setRequests(data);
+        const map = {};
+        data.forEach((r) => (map[r.id] = r.status || 'pending'));
+        setSelectedStatuses(map);
+      }
+    } catch (err) {
+      console.error('Failed to change status:', err);
+      setError(err.message || 'Failed to change status');
+    } finally {
+      setActioningId(null);
     }
   }
 
@@ -182,6 +219,26 @@ function AdminRequests() {
                       </td>
                       <td className={`${styles.tableCell} ${styles.actionCell}`}>
                         <div className={styles.actionGroup}>
+                          <select
+                            value={selectedStatuses[req.id] || (req.status || 'pending')}
+                            onChange={(e) => setSelectedStatuses((s) => ({ ...s, [req.id]: e.target.value }))}
+                            disabled={actioningId === req.id}
+                            style={{ marginRight: 8, padding: '6px 8px', borderRadius: 6 }}
+                          >
+                            {['pending','taken','ongoing','paused','done','cancelled'].map((st) => (
+                              <option key={st} value={st}>{st}</option>
+                            ))}
+                          </select>
+
+                          <button
+                            onClick={() => handleChangeStatus(req.id)}
+                            disabled={actioningId === req.id}
+                            className={`${styles.actionButton} ${styles.primaryButton}`}
+                            style={{ marginRight: 8 }}
+                          >
+                            {actioningId === req.id ? 'Working...' : 'Apply'}
+                          </button>
+
                           <button
                             onClick={() => confirmDelete(req)}
                             disabled={actioningId === req.id}
