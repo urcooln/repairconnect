@@ -4,6 +4,7 @@ import styles from './ProviderDashboard.module.css';
 import WelcomeMessage from '../components/WelcomeMessage';
 import ProfileSection from '../components/ProfileSection';
 import JobsSection from '../components/JobsSection';
+import MyJobs from '../components/MyJobs';
 import * as api from '../services/api';
 import { isAuthenticated, getUserData } from '../utils/auth';
 
@@ -82,6 +83,19 @@ const ProviderDashboard = () => {
     fetchProviderData();
   }, []);
 
+
+  // expose a refresh function to child components
+  const refreshJobs = async () => {
+    try {
+      const jobData = await api.getProviderJobs();
+      setJobs(Array.isArray(jobData) ? jobData : []);
+      return jobData;
+    } catch (err) {
+      console.error('Error refreshing jobs:', err);
+      return null;
+    }
+  };
+
   const handleProfileUpdate = async (updatedProfile) => {
     try {
       const updated = await api.updateProviderProfile(updatedProfile);
@@ -133,10 +147,15 @@ const ProviderDashboard = () => {
         onSave={handleProfileUpdate}
       />
       
-      <JobsSection 
-        jobs={jobs}
-        providerRoles={provider.roles}
-      />
+      <div className={styles.rightColumn}>
+        <JobsSection 
+          jobs={jobs}
+          providerRoles={provider.roles}
+          refreshJobs={refreshJobs}
+        />
+
+        <MyJobs />
+      </div>
     </div>
   );
 };

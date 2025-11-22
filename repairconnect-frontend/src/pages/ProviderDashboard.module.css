@@ -231,6 +231,18 @@
   gap: 28px;
 }
 
+/* Right column wrapper so Opportunities and My Jobs stay adjacent */
+.rightColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 16px; /* slightly tighter so My Jobs sits closer */
+}
+
+/* Place My Jobs in the right column (below Opportunities) on wide screens */
+.myJobsSection {
+  /* default: follow normal flow */
+}
+
 .jobsSectionHeader {
   display: flex;
   flex-wrap: wrap;
@@ -372,16 +384,20 @@
   color: #455a64;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  margin-bottom: 8px;
 }
+
 
 .editFormRow input,
 .editFormRow textarea {
   border: 1px solid #cfd8dc;
   border-radius: 6px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   font-size: 14px;
+  line-height: 1.45;
   background: #fafafa;
   transition: border-color 0.2s ease;
+  box-sizing: border-box;
 }
 
 .editFormRow input:focus,
@@ -393,7 +409,58 @@
 
 .editFormRow textarea {
   resize: vertical;
-  min-height: 80px;
+  min-height: 120px;
+  padding-top: 14px;
+}
+
+.statusActionGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 120px;
+  align-items: stretch;
+}
+
+.statusButton {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  color: white;
+}
+
+.statusPrimary {
+  background: linear-gradient(90deg, #2563eb, #06b6d4);
+}
+
+.statusWarn {
+  background: linear-gradient(90deg, #f59e0b, #f97316);
+}
+
+.statusSuccess {
+  background: linear-gradient(90deg, #10b981, #059669);
+}
+
+.updateContainer {
+  width: 100%;
+}
+
+.updateImage {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid rgba(226,232,240,0.6);
+  box-shadow: 0 6px 18px rgba(2,6,23,0.04);
+}
+
+/* nicer update box */
+.updateBox {
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  border: 1px solid rgba(99, 102, 241, 0.06);
+  padding: 14px;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
 }
 
 .rolesSection {
@@ -615,6 +682,20 @@
   box-shadow: 0 16px 32px rgba(37, 99, 235, 0.22);
 }
 
+.secondaryButton {
+  padding: 8px 14px;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.secondaryButton:hover {
+  background: #e6eefc;
+}
+
 .noJobs {
   text-align: center;
   color: #666;
@@ -720,6 +801,14 @@
     grid-column: 2 / -1;
   }
 
+  /* ensure the rightColumn spans the right column and stacks its children */
+  .rightColumn {
+    grid-column: 2 / -1;
+  }
+  .myJobsSection {
+    grid-column: 2 / -1;
+  }
+
   .jobsSectionHeader {
     align-items: flex-start;
   }
@@ -762,4 +851,66 @@
 
 body.modal-open {
   overflow: hidden;
+}
+
+/* Contact modal styles (enter/exit animations) */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 20000;
+  padding: 20px;
+  backdrop-filter: blur(2px);
+  animation: overlayFadeIn 160ms ease-out forwards;
+}
+
+.modalContentEnter {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.3);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  width: min(680px, 100%);
+  max-width: 720px;
+  transform: scale(0.96);
+  opacity: 0;
+  z-index: 20001;
+  animation: modalPopIn 180ms cubic-bezier(.2,.9,.2,1) forwards;
+}
+
+.modalContentExit {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.3);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  width: min(680px, 100%);
+  max-width: 720px;
+  transform: scale(1);
+  opacity: 1;
+  z-index: 20001;
+  animation: modalPopOut 160ms ease-in forwards;
+}
+
+@keyframes modalPopIn {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes modalPopOut {
+  from { transform: scale(1); opacity: 1; }
+  to { transform: scale(0.96); opacity: 0; }
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes overlayFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
