@@ -305,7 +305,7 @@ function AdminRequests() {
                             disabled={actioningId === req.id}
                             style={{ marginRight: 8, padding: '6px 8px', borderRadius: 6 }}
                           >
-                            {['pending','taken','ongoing','paused','done','cancelled'].map((st) => (
+                            {['pending','taken','ongoing','paused','done','closed'].map((st) => (
                               <option key={st} value={st}>{st}</option>
                             ))}
                           </select>
@@ -313,8 +313,7 @@ function AdminRequests() {
                           <button
                             onClick={() => handleChangeStatus(req.id)}
                             disabled={actioningId === req.id}
-                            className={`${styles.actionButton} ${styles.primaryButton}`}
-                            style={{ marginRight: 8 }}
+                            className={`${styles.actionButton} ${styles.approveButton}`}
                           >
                             {actioningId === req.id ? 'Working...' : 'Apply'}
                           </button>
