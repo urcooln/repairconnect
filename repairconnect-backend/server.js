@@ -1822,7 +1822,7 @@ async function cleanUpCancelledRequests() {
   try {
     const result = await sql`
       DELETE FROM service_requests
-      WHERE status = 'cancelled'
+      WHERE status = 'closed'
       AND updated_at <= NOW() - INTERVAL '24 hours'
       RETURNING id, title
     `;

@@ -16,6 +16,11 @@ function AdminRequests() {
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
 
+  // Category filter (See CustomerDashboard for all fields)
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  // Status filter (Pending, Taken, Closed)
+  const [statusFilter, setStatusFilter] = useState("all");
+
   // ✅ Fetch service requests from backend (read token at effect time)
   useEffect(() => {
     async function fetchRequests() {
@@ -185,6 +190,57 @@ function AdminRequests() {
         <section className={styles.usersSection}>
           <h2 className={styles.sectionTitle}>All Service Requests</h2>
 
+		  	  {/* Filters: Category & Status */}
+	          <div
+  	          style={{
+    		        display: "flex",
+    		        justifyContent: "flex-end",
+    		        gap: "12px",
+    		        marginBottom: "10px",
+    		        marginRight: "20px",
+  	          }}
+	          >
+  	          {/* Category Filter */}
+  	          <select
+    		        value={categoryFilter}
+    		        onChange={(e) => setCategoryFilter(e.target.value)}
+    		        style={{
+      		        padding: "6px 10px",
+      		        borderRadius: "5px",
+      		        border: "1px solid #ccc",
+      		        fontSize: "0.9rem",
+    		        }}
+  	          >
+    		        <option value="all">All Categories</option>
+    		        <option value="plumbing">Plumbing</option>
+    		        <option value="electrical">Electrical</option>
+					<option value="hvac">HVAC</option>
+    		        <option value="carpentry">Carpentry</option>
+    		        <option value="appliance repair">Appliance Repair</option>
+					<option value="painting">Painting</option>
+					<option value="landscaping">Landscaping</option>
+    		        <option value="roofing">Roofing</option>
+    		        <option value="other">Other</option>
+  	          </select>
+
+  	          {/* Status Filter */}
+  	          <select
+    		        value={statusFilter}
+    		        onChange={(e) => setStatusFilter(e.target.value)}
+    		        style={{
+      		        padding: "6px 10px",
+      		        borderRadius: "5px",
+      		        border: "1px solid #ccc",
+      		        fontSize: "0.9rem",
+    		        }}
+  	          >
+    		        <option value="all">All Statuses</option>
+    		        <option value="pending">Pending</option>
+    		        <option value="taken">Taken</option>
+    		        <option value="closed">Closed</option>
+  	          </select>
+	          </div>
+
           <div className={styles.tableWrapper}>
             <table className={styles.table}>
               <thead>
@@ -199,8 +255,31 @@ function AdminRequests() {
                 </tr>
               </thead>
               <tbody>
-                {requests.length > 0 ? (
-                  requests.map((req) => (
+                {requests.filter((req) => {
+		    const matchesCategory =
+		      categoryFilter === "all" ||
+		      (req.category && req.category.toLowerCase() === categoryFilter.toLowerCase());
+
+		    const matchesStatus =
+		      statusFilter === "all" ||
+		      (req.status && req.status.toLowerCase() === statusFilter.toLowerCase());
+
+		    return matchesCategory && matchesStatus;
+		  }).length > 0 ? (
+		    requests
+		      .filter((req) => {
+			const matchesCategory =
+			  categoryFilter === "all" ||
+			  (req.category && req.category.toLowerCase() === categoryFilter.toLowerCase());
+
+			const matchesStatus =
+			  statusFilter === "all" ||
+			  (req.status && req.status.toLowerCase() === statusFilter.toLowerCase());
+
+			return matchesCategory && matchesStatus;
+		      })
+		      .map((req) => (
+
                     <tr key={req.id}>
                       <td className={`${styles.tableCell} ${styles.idCell}`}>{req.id}</td>
                       <td className={`${styles.tableCell} ${styles.nameCell}`}>
@@ -226,7 +305,7 @@ function AdminRequests() {
                             disabled={actioningId === req.id}
                             style={{ marginRight: 8, padding: '6px 8px', borderRadius: 6 }}
                           >
-                            {['pending','taken','ongoing','paused','done','cancelled'].map((st) => (
+                            {['pending','taken','ongoing','paused','done','closed'].map((st) => (
                               <option key={st} value={st}>{st}</option>
                             ))}
                           </select>
@@ -234,8 +313,7 @@ function AdminRequests() {
                           <button
                             onClick={() => handleChangeStatus(req.id)}
                             disabled={actioningId === req.id}
-                            className={`${styles.actionButton} ${styles.primaryButton}`}
-                            style={{ marginRight: 8 }}
+                            className={`${styles.actionButton} ${styles.approveButton}`}
                           >
                             {actioningId === req.id ? 'Working...' : 'Apply'}
                           </button>
