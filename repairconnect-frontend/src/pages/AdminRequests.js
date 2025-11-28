@@ -255,8 +255,31 @@ function AdminRequests() {
                 </tr>
               </thead>
               <tbody>
-                {requests.length > 0 ? (
-                  requests.map((req) => (
+                {requests.filter((req) => {
+		    const matchesCategory =
+		      categoryFilter === "all" ||
+		      (req.category && req.category.toLowerCase() === categoryFilter.toLowerCase());
+
+		    const matchesStatus =
+		      statusFilter === "all" ||
+		      (req.status && req.status.toLowerCase() === statusFilter.toLowerCase());
+
+		    return matchesCategory && matchesStatus;
+		  }).length > 0 ? (
+		    requests
+		      .filter((req) => {
+			const matchesCategory =
+			  categoryFilter === "all" ||
+			  (req.category && req.category.toLowerCase() === categoryFilter.toLowerCase());
+
+			const matchesStatus =
+			  statusFilter === "all" ||
+			  (req.status && req.status.toLowerCase() === statusFilter.toLowerCase());
+
+			return matchesCategory && matchesStatus;
+		      })
+		      .map((req) => (
+
                     <tr key={req.id}>
                       <td className={`${styles.tableCell} ${styles.idCell}`}>{req.id}</td>
                       <td className={`${styles.tableCell} ${styles.nameCell}`}>
