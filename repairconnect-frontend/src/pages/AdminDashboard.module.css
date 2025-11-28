@@ -163,7 +163,6 @@
   word-wrap: break-word;
   overflow-wrap: break-word;
   line-height: 1.4;
-  vertical-align: top;
 }
 
 .descriptionCell {
@@ -172,7 +171,6 @@
   word-wrap: break-word;
   overflow-wrap: break-word;
   line-height: 1.4;
-  vertical-align: top;
 }
 
 .suspendedCell {
