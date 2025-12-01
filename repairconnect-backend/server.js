@@ -1817,6 +1817,88 @@ app.delete("/service-requests/:id", requireAuth, async (req, res) => {
   }
 });
 
+// ✅ Edit (update) a service request — only allowed while request is pending and by owner
+app.patch('/service-requests/:id', requireAuth, async (req, res) => {
+  const requestId = Number.parseInt(req.params.id, 10);
+  const userId = req.user.id;
+
+  if (Number.isNaN(requestId)) return res.status(400).json({ error: 'Invalid request id' });
+
+  try {
+    await ensureServiceRequestSchema();
+
+    const [existing] = await sql`SELECT * FROM service_requests WHERE id = ${requestId}`;
+    if (!existing) return res.status(404).json({ error: 'Service request not found' });
+
+    if (existing.customer_id !== userId) return res.status(403).json({ error: 'Only the owner can edit this request' });
+
+    // Only allow edits when status is pending
+    const currentStatus = (existing.status || 'pending').toLowerCase();
+    if (currentStatus !== 'pending') {
+      return res.status(403).json({ error: 'Edits allowed only while request status is pending' });
+    }
+
+    const { title, category, description, preferred_date, preferred_timezone, updated_at } = req.body || {};
+
+    // Optional optimistic concurrency: if client supplied updated_at, enforce it hasn't changed
+    if (typeof updated_at !== 'undefined' && updated_at !== null) {
+      const existingUpdated = existing.updated_at ? new Date(existing.updated_at).toISOString() : null;
+      if (existingUpdated !== updated_at) {
+        return res.status(409).json({ error: 'Request changed since you started editing' });
+      }
+    }
+
+    // Determine new values (preserve existing when field not provided)
+    const newTitle = typeof title === 'undefined' ? existing.title : (String(title || '').trim());
+    const newCategory = typeof category === 'undefined' ? existing.category : (String(category || '').trim());
+    const newDescription = typeof description === 'undefined' ? existing.description : (String(description || '').trim());
+
+    // Validate required fields
+    if (!newTitle) return res.status(400).json({ error: 'Title is required' });
+    if (!newCategory) return res.status(400).json({ error: 'Category is required' });
+    if (!newDescription) return res.status(400).json({ error: 'Description is required' });
+
+    let newPreferredDate = existing.preferred_date;
+    if (typeof preferred_date !== 'undefined') {
+      if (preferred_date === null || preferred_date === '') {
+        newPreferredDate = null;
+      } else {
+        const parsed = new Date(preferred_date);
+        if (Number.isNaN(parsed.getTime())) return res.status(400).json({ error: 'Invalid preferred_date format' });
+        newPreferredDate = parsed.toISOString();
+      }
+    }
+
+    const newPreferredTz = typeof preferred_timezone === 'undefined' ? existing.preferred_timezone : (preferred_timezone || null);
+
+    const updated = await sql`
+      UPDATE service_requests
+      SET title = ${newTitle},
+          category = ${newCategory},
+          description = ${newDescription},
+          preferred_date = ${newPreferredDate},
+          preferred_timezone = ${newPreferredTz},
+          updated_at = NOW()
+      WHERE id = ${requestId}
+      RETURNING *
+    `;
+
+    const updatedRequest = updated[0];
+
+    const serializeDate = (value) => {
+      if (!value) return null;
+      if (value instanceof Date) return value.toISOString();
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
+    };
+
+    res.json({ message: 'Service request updated', request: { ...updatedRequest, preferred_date: serializeDate(updatedRequest.preferred_date), preferred_timezone: updatedRequest.preferred_timezone || null, created_at: serializeDate(updatedRequest.created_at), updated_at: serializeDate(updatedRequest.updated_at) } });
+  } catch (err) {
+    console.error('Error updating service request:', err);
+    res.status(500).json({ error: 'Failed to update service request' });
+  }
+});
+
 //Automatically delete requests that have been cancelled for >=24 hours
 async function cleanUpCancelledRequests() {
   try {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import Notifications from '../components/Notifications';
 import InvoiceCenter from '../components/InvoiceCenter';
+import EditRequestModal from '../components/EditRequestModal';
 import { createInvoiceCheckout, markInvoicePaid, getHeaders } from '../services/api';
 import { useNavigate } from "react-router-dom";
 import jwtDecode from "jwt-decode";
@@ -22,6 +23,7 @@ export default function CustomerDashboard() {
   
   // Requests list state
   const [requests, setRequests] = useState([]);
+  const [editingRequest, setEditingRequest] = useState(null);
   const [loading, setLoading] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
@@ -518,6 +520,7 @@ export default function CustomerDashboard() {
                   <span>View Requests</span>
                 </button>
               </div>
+                
             </div>
           </div>
         )}
@@ -838,31 +841,51 @@ export default function CustomerDashboard() {
                       </div>
                       
                       {req.status === "pending" && (
-                        <button
-                          onClick={() => handleCancel(req.id)}
-                          style={{
-                            padding: "10px 20px",
-                            backgroundColor: "#ef4444",
-                            color: "white",
-                            border: "none",
-                            borderRadius: "10px",
-                            cursor: "pointer",
-                            marginLeft: "24px",
-                            fontSize: "14px",
-                            fontWeight: "600",
-                            transition: "all 0.2s ease"
-                          }}
-                          onMouseEnter={(e) => {
-                            e.target.style.backgroundColor = "#dc2626";
-                            e.target.style.transform = "translateY(-2px)";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.target.style.backgroundColor = "#ef4444";
-                            e.target.style.transform = "translateY(0)";
-                          }}
-                        >
-                          Cancel
-                        </button>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginLeft: 24 }}>
+                          <button
+                            onClick={() => setEditingRequest(req)}
+                            style={{
+                              padding: "10px 20px",
+                              backgroundColor: "#2563eb",
+                              color: "white",
+                              border: "none",
+                              borderRadius: "10px",
+                              cursor: "pointer",
+                              fontSize: "14px",
+                              fontWeight: "600",
+                              transition: "all 0.2s ease"
+                            }}
+                            onMouseEnter={(e) => { e.target.style.transform = "translateY(-2px)"; e.target.style.backgroundColor = "#1e40af"; }}
+                            onMouseLeave={(e) => { e.target.style.transform = "translateY(0)"; e.target.style.backgroundColor = "#2563eb"; }}
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            onClick={() => handleCancel(req.id)}
+                            style={{
+                              padding: "10px 20px",
+                              backgroundColor: "#ef4444",
+                              color: "white",
+                              border: "none",
+                              borderRadius: "10px",
+                              cursor: "pointer",
+                              fontSize: "14px",
+                              fontWeight: "600",
+                              transition: "all 0.2s ease"
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.backgroundColor = "#dc2626";
+                              e.target.style.transform = "translateY(-2px)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.backgroundColor = "#ef4444";
+                              e.target.style.transform = "translateY(0)";
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1107,6 +1130,14 @@ export default function CustomerDashboard() {
               </div>
             </div>
           </div>
+        )}
+        {editingRequest && (
+          <EditRequestModal
+            request={editingRequest}
+            onClose={() => setEditingRequest(null)}
+            onSaved={() => { setEditingRequest(null); loadRequests(); }}
+            categories={categories}
+          />
         )}
 
       </div>

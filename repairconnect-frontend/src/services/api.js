@@ -206,6 +206,25 @@ export const getInvoices = async () => {
   return res.json();
 };
 
+export const updateRequest = async (requestId, payload) => {
+  const res = await fetch(`${API_URL}/service-requests/${requestId}`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+    body: JSON.stringify(payload)
+  });
+
+  const body = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const err = new Error(body.error || `Failed to update request (HTTP ${res.status})`);
+    err.status = res.status;
+    err.body = body;
+    throw err;
+  }
+
+  return body;
+};
+
 export const markInvoicePaid = async (id) => {
   const res = await fetch(`${API_URL}/invoices/${id}/pay`, {
     method: 'PUT',
