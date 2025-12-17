@@ -58,6 +58,125 @@
   margin-bottom: 2.5rem;
 }
 
+.summaryHero {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.summaryHeroCard {
+  padding: 18px 20px;
+  border-radius: 14px;
+  background: radial-gradient(circle at top right, #2563eb, #0f172a);
+  color: #fff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.summaryHeroRevenue {
+  background: radial-gradient(circle at top right, #22c55e, #065f46);
+}
+
+.summaryHeroLabel {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.8;
+  margin-bottom: 6px;
+}
+
+.summaryHeroValue {
+  font-size: clamp(1.5rem, 1.1rem + 1vw, 2rem);
+  font-weight: 700;
+}
+
+.platformFeeSection {
+  background: #fff;
+  border-radius: 10px;
+  padding: 16px 20px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.platformFeeDescription {
+  margin: 4px 0 0 0;
+  color: #5f6b7a;
+  font-size: 0.9rem;
+}
+
+.platformFeeControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.platformFeeField {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.platformFeeInput {
+  width: 120px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #cbd5f5;
+  font-size: 1rem;
+}
+
+.platformFeeInput:disabled {
+  background: #f3f4f6;
+  cursor: not-allowed;
+}
+
+.platformFeeSuffix {
+  font-weight: 600;
+  color: #475569;
+}
+
+.platformFeeButton {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.2s ease;
+}
+
+.platformFeeButton:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.platformFeeButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.platformFeeMeta {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.platformFeeError {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 0.9rem;
+}
+
+.platformFeeSuccess {
+  margin: 0;
+  color: #15803d;
+  font-size: 0.9rem;
+}
+
 .summaryGrid {
   display: grid;
   gap: 10px;

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { setToken } from '../utils/auth';
 
 const API_BASE = "http://localhost:8081";
 
@@ -23,7 +24,7 @@ export default function AdminLogin() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Login failed");
 
-      localStorage.setItem("token", data.token);
+      setToken(data.token);
 
       navigate("/admin/dashboard");
     } catch (e) {

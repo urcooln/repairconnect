@@ -1,10 +1,16 @@
 // src/services/api.js
+import { getToken } from '../utils/auth';
+
 const API_URL = "http://localhost:8081"; // Test backend server port
 
 // Helper to attach auth headers
-export function getHeaders() {
-  const token = localStorage.getItem('token');
-  const headers = { 'Content-Type': 'application/json' };
+export function getHeaders(options = {}) {
+  const { json = true } = options;
+  const token = getToken();
+  const headers = {};
+  if (json) {
+    headers['Content-Type'] = 'application/json';
+  }
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -77,7 +83,7 @@ export const uploadProviderPhoto = async (photoFile) => {
   const formData = new FormData();
   formData.append('photo', photoFile);
 
-  const token = localStorage.getItem('token');
+  const token = getToken();
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -113,7 +119,7 @@ export const postJobUpdate = async (jobId, { message, imageUrl, file } = {}) => 
     if (message) fd.append('message', message);
     fd.append('image', file);
 
-    const token = localStorage.getItem('token');
+    const token = getToken();
     const headers = {};
     if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -238,9 +244,11 @@ export const markInvoicePaid = async (id) => {
 };
 
 export const createInvoiceCheckout = async (invoiceId) => {
+  const clientOrigin = typeof window !== 'undefined' ? window.location.origin : undefined;
   const res = await fetch(`${API_URL}/invoices/${invoiceId}/create-checkout`, {
     method: 'POST',
-    headers: getHeaders()
+    headers: getHeaders(),
+    body: JSON.stringify({ clientOrigin })
   });
 
   if (!res.ok) {
@@ -250,6 +258,84 @@ export const createInvoiceCheckout = async (invoiceId) => {
     throw err;
   }
 
+  return res.json();
+};
+
+export const addRequestAttachments = async (requestId, files) => {
+  if (!Array.isArray(files) || files.length === 0) return { attachments: [] };
+  const fd = new FormData();
+  files.forEach((file) => fd.append('attachments', file));
+
+  const token = getToken();
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${API_URL}/service-requests/${requestId}/attachments`, {
+    method: 'POST',
+    headers,
+    body: fd
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.error || 'Failed to upload attachments');
+    err.status = res.status;
+    err.body = body;
+    throw err;
+  }
+
+  return res.json();
+};
+
+export const deleteRequestAttachment = async (requestId, attachmentId) => {
+  const res = await fetch(`${API_URL}/service-requests/${requestId}/attachments/${attachmentId}`, {
+    method: 'DELETE',
+    headers: getHeaders()
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.error || 'Failed to delete attachment');
+    err.status = res.status;
+    err.body = body;
+    throw err;
+  }
+
+  return res.json();
+};
+
+export const getProviderEarnings = async () => {
+  const res = await fetch(`${API_URL}/provider/earnings`, {
+    headers: getHeaders()
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load earnings');
+  }
+  return res.json();
+};
+
+export const getPlatformFee = async () => {
+  const res = await fetch(`${API_URL}/admin/platform-fee`, {
+    headers: getHeaders()
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load platform fee');
+  }
+  return res.json();
+};
+
+export const updatePlatformFee = async (percent) => {
+  const res = await fetch(`${API_URL}/admin/platform-fee`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify({ percent })
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to update platform fee');
+  }
   return res.json();
 };
 

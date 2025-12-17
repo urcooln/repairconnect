@@ -1,10 +1,11 @@
 // src/components/ProtectedRoute.jsx
 import { Navigate } from "react-router-dom";
 import jwtDecode from "jwt-decode";
+import { getToken, removeToken } from '../utils/auth';
 
 export default function ProtectedRoute({ children, allowedRoles }) {
   try {
-    const token = localStorage.getItem("token");
+    let token = getToken();
 
     if (!token) {
       console.log('No token found');
@@ -16,7 +17,7 @@ export default function ProtectedRoute({ children, allowedRoles }) {
 
     if (!decoded || !decoded.role) {
       console.log('Invalid token format');
-      localStorage.removeItem("token");
+      removeToken();
       return <Navigate to="/" replace />;
     }
 
@@ -29,14 +30,14 @@ export default function ProtectedRoute({ children, allowedRoles }) {
     const currentTime = Date.now() / 1000;
     if (decoded.exp && decoded.exp < currentTime) {
       console.log('Token expired');
-      localStorage.removeItem("token");
+      removeToken();
       return <Navigate to="/" replace />;
     }
 
     return children;
   } catch (error) {
     console.error('Protected route error:', error);
-    localStorage.removeItem("token");
+    removeToken();
     return <Navigate to="/" replace />;
   }
 }

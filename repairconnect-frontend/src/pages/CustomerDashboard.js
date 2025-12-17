@@ -3,13 +3,15 @@ import Notifications from '../components/Notifications';
 import InvoiceCenter from '../components/InvoiceCenter';
 import EditRequestModal from '../components/EditRequestModal';
 import { createInvoiceCheckout, markInvoicePaid, getHeaders } from '../services/api';
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import jwtDecode from "jwt-decode";
+import { getToken, removeToken } from '../utils/auth';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:8081";
 
 export default function CustomerDashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [userName, setUserName] = useState("");
   const [activeSection, setActiveSection] = useState("overview");
   
@@ -20,6 +22,8 @@ export default function CustomerDashboard() {
   const [preferredDate, setPreferredDate] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [attachments, setAttachments] = useState([]);
+  const [attachmentError, setAttachmentError] = useState("");
   
   // Requests list state
   const [requests, setRequests] = useState([]);
@@ -35,6 +39,7 @@ export default function CustomerDashboard() {
   const [profileAddress, setProfileAddress] = useState('');
   const [profilePhoto, setProfilePhoto] = useState(null);
   const [profileSuccess, setProfileSuccess] = useState('');
+  const [paymentNotice, setPaymentNotice] = useState(null);
 
   const categories = [
     "Plumbing",
@@ -47,9 +52,17 @@ export default function CustomerDashboard() {
     "Roofing",
     "Other"
   ];
+  const MAX_ATTACHMENTS = 5;
+  const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024;
+
+  const buildMediaUrl = (url) => {
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url)) return url;
+    return url.startsWith('/') ? `${API_BASE}${url}` : url;
+  };
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (token) {
       try {
         const decoded = jwtDecode(token);
@@ -62,7 +75,7 @@ export default function CustomerDashboard() {
     // load profile basic info
     // don't block the dashboard load
     (async () => {
-      const token = localStorage.getItem('token');
+      const token = getToken();
       if (!token) return;
       try {
         const res = await fetch(`${API_BASE}/customer/profile`, {
@@ -86,6 +99,70 @@ export default function CustomerDashboard() {
   useEffect(() => {
     if (activeSection === 'payment-history') fetchInvoices();
   }, [activeSection]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || '');
+    const payment = params.get('payment');
+    if (payment === 'success') {
+      setPaymentNotice({ type: 'success', text: 'Payment received! Your provider has been notified.' });
+    } else if (payment === 'cancel') {
+      setPaymentNotice({ type: 'error', text: 'Payment was cancelled. No charges were made.' });
+    }
+    if (payment) {
+      navigate(location.pathname, { replace: true });
+    }
+  }, [location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadRequests();
+      if (activeSection === 'payment-history') {
+        fetchInvoices();
+      }
+    }, 20000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection]);
+
+  const formatFileSize = (size) => {
+    if (!size && size !== 0) return '';
+    if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    if (size >= 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${size} B`;
+  };
+
+  const handleAttachmentChange = (event) => {
+    setAttachmentError('');
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    setAttachments((prev) => {
+      const next = [...prev];
+      for (const file of files) {
+        if (next.length >= MAX_ATTACHMENTS) {
+          setAttachmentError(`You can upload up to ${MAX_ATTACHMENTS} files.`);
+          break;
+        }
+        if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+          setAttachmentError('Only image or video files are allowed.');
+          continue;
+        }
+        if (file.size > MAX_ATTACHMENT_SIZE) {
+          setAttachmentError('Each file must be 20MB or smaller.');
+          continue;
+        }
+        next.push(file);
+      }
+      return next;
+    });
+    if (event.target && typeof event.target.value !== 'undefined') {
+      event.target.value = '';
+    }
+  };
+
+  const removeAttachment = (index) => {
+    setAttachments((prev) => prev.filter((_, idx) => idx !== index));
+    setAttachmentError('');
+  };
 
   async function loadRequests() {
     setLoading(true);
@@ -116,15 +193,35 @@ export default function CustomerDashboard() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/service-requests`, {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify({
+      const usingFormData = attachments.length > 0;
+      let body;
+      let headers;
+
+      if (usingFormData) {
+        const formData = new FormData();
+        formData.append('title', title.trim());
+        formData.append('category', category);
+        formData.append('description', description.trim());
+        if (preferredDate) {
+          formData.append('preferred_date', preferredDate);
+        }
+        attachments.forEach((file) => formData.append('attachments', file));
+        body = formData;
+        headers = getHeaders({ json: false });
+      } else {
+        body = JSON.stringify({
           title: title.trim(),
           category,
           description: description.trim(),
           preferred_date: preferredDate || null
-        })
+        });
+        headers = getHeaders();
+      }
+
+      const res = await fetch(`${API_BASE}/service-requests`, {
+        method: "POST",
+        headers,
+        body
       });
 
       const data = await res.json();
@@ -135,6 +232,8 @@ export default function CustomerDashboard() {
         setCategory("");
         setDescription("");
         setPreferredDate("");
+        setAttachments([]);
+        setAttachmentError("");
         loadRequests();
       } else {
         setError(data.error || "Failed to submit request");
@@ -170,7 +269,7 @@ export default function CustomerDashboard() {
   }
 
   function handleLogout() {
-    localStorage.removeItem("token");
+    removeToken();
     navigate("/");
   }
 
@@ -373,6 +472,23 @@ export default function CustomerDashboard() {
 
       {/* Main Content Area */}
       <div style={{ marginLeft: "280px", flex: 1, padding: "40px 50px", minHeight: "100vh" }}>
+        {paymentNotice && (
+          <div style={{
+            marginBottom: 16,
+            padding: '14px 18px',
+            borderRadius: 12,
+            border: `1px solid ${paymentNotice.type === 'success' ? '#bbf7d0' : '#fecaca'}`,
+            backgroundColor: paymentNotice.type === 'success' ? '#ecfdf5' : '#fef2f2',
+            color: paymentNotice.type === 'success' ? '#065f46' : '#991b1b',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12
+          }}>
+            <span>{paymentNotice.text}</span>
+            <button onClick={() => setPaymentNotice(null)} style={{ border: 'none', background: 'transparent', color: 'inherit', fontWeight: 600, cursor: 'pointer' }}>Dismiss</button>
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12, gap: 8 }}>
           <Notifications />
           <InvoiceCenter />
@@ -640,6 +756,64 @@ export default function CustomerDashboard() {
                   />
                 </div>
 
+                <div style={{ marginBottom: "24px" }}>
+                  <label style={{ display: "block", marginBottom: "10px", fontWeight: "600", color: "#374151", fontSize: "15px" }}>
+                    Photos / Videos (Optional)
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    multiple
+                    onChange={handleAttachmentChange}
+                    style={{ display: 'block', marginBottom: 8 }}
+                  />
+                  <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
+                    Attach up to {MAX_ATTACHMENTS} files. Each file must be 20MB or smaller.
+                  </p>
+                  {attachmentError && (
+                    <div style={{
+                      marginTop: "10px",
+                      padding: "10px 12px",
+                      backgroundColor: "#fee2e2",
+                      color: "#991b1b",
+                      borderRadius: "10px",
+                      border: "1px solid #fecaca",
+                      fontSize: "14px"
+                    }}>
+                      {attachmentError}
+                    </div>
+                  )}
+                  {attachments.length > 0 && (
+                    <ul style={{ listStyle: 'none', padding: 0, margin: '12px 0 0 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {attachments.map((file, idx) => (
+                        <li key={`${file.name}-${idx}`} style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          border: '1px solid #e5e7eb',
+                          backgroundColor: '#f8fafc',
+                          borderRadius: '10px',
+                          padding: '10px 14px'
+                        }}>
+                          <div>
+                            <div style={{ fontWeight: 600, color: '#1f2937' }}>{file.name}</div>
+                            <div style={{ fontSize: 12, color: '#6b7280' }}>
+                              {(file.type || '').startsWith('video/') ? 'Video' : 'Image'} • {formatFileSize(file.size)}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeAttachment(idx)}
+                            style={{ border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', fontWeight: 600 }}
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
                 <div style={{ marginBottom: "28px" }}>
                   <label style={{ display: "block", marginBottom: "10px", fontWeight: "600", color: "#374151", fontSize: "15px" }}>
                     Preferred Date (Optional)
@@ -813,6 +987,47 @@ export default function CustomerDashboard() {
                         <p style={{ margin: "0 0 16px 0", color: "#6b7280", lineHeight: "1.6", fontSize: "15px" }}>
                           {req.description}
                         </p>
+                        {Array.isArray(req.attachments) && req.attachments.length > 0 && (
+                          <div style={{ marginBottom: "16px" }}>
+                            <strong style={{ color: "#374151", fontSize: 14 }}>Attachments</strong>
+                            <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                              {req.attachments.map((att) => {
+                                const mediaUrl = buildMediaUrl(att.url);
+                                return (
+                                  <a
+                                    key={`${req.id}-attachment-${att.id || mediaUrl}`}
+                                    href={mediaUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                      width: '110px',
+                                      height: '110px',
+                                      borderRadius: '12px',
+                                      border: '1px solid #e5e7eb',
+                                      overflow: 'hidden',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      backgroundColor: '#f3f4f6',
+                                      position: 'relative'
+                                    }}
+                                  >
+                                    {att.type === 'video' ? (
+                                      <video src={mediaUrl} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    ) : (
+                                      <img src={mediaUrl} alt={att.originalName || 'Attachment'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    )}
+                                    {att.type === 'video' && (
+                                      <span style={{ position: 'absolute', bottom: 6, right: 6, background: 'rgba(15,23,42,0.75)', color: 'white', fontSize: 11, padding: '2px 6px', borderRadius: '999px' }}>
+                                        Video
+                                      </span>
+                                    )}
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                         <div style={{ display: "flex", flexWrap: "wrap", gap: "16px", fontSize: "14px", color: "#9ca3af" }}>
                           <div>
                             <strong style={{ color: "#374151" }}>Status:</strong>{" "}
@@ -1082,7 +1297,7 @@ export default function CustomerDashboard() {
                   setProfileLoading(true);
                   setProfileError('');
                   try {
-                    const token = localStorage.getItem('token');
+                    const token = getToken();
                     const res = await fetch(`${API_BASE}/customer/profile`, { headers: getHeaders() });
                     if (!res.ok) throw new Error('Failed to load');
                     const data = await res.json();

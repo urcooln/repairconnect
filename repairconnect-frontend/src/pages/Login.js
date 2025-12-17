@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import jwtDecode from "jwt-decode";
+import { setToken } from '../utils/auth';
 
 const API_BASE = "http://localhost:8081"; 
 
@@ -38,7 +39,7 @@ export default function Login() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Login failed");
 
-      localStorage.setItem("token", data.token);
+      setToken(data.token);
 
       const decoded = jwtDecode(data.token);
 

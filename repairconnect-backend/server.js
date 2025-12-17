@@ -14,6 +14,9 @@ const app = express();
 
 // pull values from .env
 const { ADMIN_EMAIL, ADMIN_PASSWORD, JWT_SECRET } = process.env;
+const DEFAULT_PLATFORM_FEE_PERCENT = Number.isFinite(Number(process.env.PLATFORM_FEE_PERCENT))
+  ? Number(process.env.PLATFORM_FEE_PERCENT)
+  : 0;
 const PORT = process.env.PORT || 8081;
 
 app.use(cors({ origin: "http://localhost:3000" }));
@@ -27,7 +30,7 @@ const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
 fs.mkdirSync(uploadsDir, { recursive: true });
 app.use('/uploads', express.static(uploadsDir));
 
-// multer for multipart/form-data file uploads
+// multer for multipart/form-data file uploads (images/videos, up to 20MB each)
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, uploadsDir);
@@ -37,7 +40,17 @@ const storage = multer.diskStorage({
     cb(null, safe);
   }
 });
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB limit
+const upload = multer({
+  storage,
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (/^(image|video)\//.test(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image or video uploads are allowed'));
+    }
+  }
+});
 
 // ✅ Public root route (for testing)
 app.get("/", (req, res) => {
@@ -108,6 +121,7 @@ function requireProvider(req, res, next) {
 
 let providerSchemaReadyPromise = null;
 let serviceRequestSchemaReadyPromise = null;
+let platformSettingsReadyPromise = null;
 
 async function ensureProviderSchema() {
   if (!providerSchemaReadyPromise) {
@@ -253,6 +267,19 @@ async function ensureServiceRequestSchema() {
         )
       `;
       await sql`
+        CREATE TABLE IF NOT EXISTS service_request_media (
+          id SERIAL PRIMARY KEY,
+          service_request_id INTEGER REFERENCES service_requests(id) ON DELETE CASCADE,
+          url TEXT NOT NULL,
+          media_type TEXT,
+          mime_type TEXT,
+          original_name TEXT,
+          file_size INTEGER,
+          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+      `;
+      await sql`CREATE INDEX IF NOT EXISTS idx_service_request_media_request ON service_request_media(service_request_id)`;
+      await sql`
         CREATE TABLE IF NOT EXISTS invoices (
           id SERIAL PRIMARY KEY,
           service_request_id INTEGER REFERENCES service_requests(id) ON DELETE CASCADE,
@@ -273,6 +300,8 @@ async function ensureServiceRequestSchema() {
       await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid BOOLEAN DEFAULT false`;
       await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP`;
       await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`;
+      await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS platform_fee_percent NUMERIC(6,4) DEFAULT 0`;
+      await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS platform_fee_amount NUMERIC(10,2) DEFAULT 0`;
     })().catch((err) => {
       serviceRequestSchemaReadyPromise = null;
       throw err;
@@ -280,6 +309,51 @@ async function ensureServiceRequestSchema() {
   }
 
   return serviceRequestSchemaReadyPromise;
+}
+
+async function ensurePlatformSettings() {
+  if (!platformSettingsReadyPromise) {
+    platformSettingsReadyPromise = (async () => {
+      await sql`
+        CREATE TABLE IF NOT EXISTS platform_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT
+        )
+      `;
+      await sql`
+        INSERT INTO platform_settings (key, value)
+        VALUES ('platform_fee_percent', ${String(DEFAULT_PLATFORM_FEE_PERCENT)})
+        ON CONFLICT (key) DO NOTHING
+      `;
+    })().catch((err) => {
+      platformSettingsReadyPromise = null;
+      throw err;
+    });
+  }
+  return platformSettingsReadyPromise;
+}
+
+async function getPlatformFeePercent() {
+  await ensurePlatformSettings();
+  const [row] = await sql`SELECT value FROM platform_settings WHERE key = 'platform_fee_percent'`;
+  const parsed = Number(row?.value);
+  if (Number.isFinite(parsed)) return parsed;
+  const fallback = DEFAULT_PLATFORM_FEE_PERCENT;
+  await sql`
+    INSERT INTO platform_settings (key, value)
+    VALUES ('platform_fee_percent', ${String(fallback)})
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+  `;
+  return fallback;
+}
+
+async function updatePlatformFeePercent(value) {
+  await ensurePlatformSettings();
+  await sql`
+    INSERT INTO platform_settings (key, value)
+    VALUES ('platform_fee_percent', ${String(value)})
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+  `;
 }
 
 // ✅ Register new users
@@ -430,16 +504,63 @@ app.get("/db-check", async (req, res) => {
 });
 
 // ✅ Protected admin summary route
-app.get("/admin/summary", requireAuth, requireAdmin, (req, res) => {
+app.get("/admin/summary", requireAuth, requireAdmin, async (req, res) => {
   console.log("GET /admin/summary by", req.user.email);
-  res.json({
-    message: "Welcome, Admin!",
-    stats: {
-      totalUsers: 5,
-      totalRequests: 10,
-      pendingJobs: 3,
-    },
-  });
+  try {
+    await ensureServiceRequestSchema();
+    const [{ total_users = 0 } = {}] = await sql`SELECT COUNT(*)::int AS total_users FROM users`;
+    const [{ total_requests = 0 } = {}] = await sql`SELECT COUNT(*)::int AS total_requests FROM service_requests`;
+    const [{ pending_jobs = 0 } = {}] = await sql`SELECT COUNT(*)::int AS pending_jobs FROM service_requests WHERE status = 'pending'`;
+    const [{ total_platform = 0, total_gross = 0, total_net = 0 } = {}] = await sql`
+      SELECT
+        COALESCE(SUM(platform_fee_amount), 0) AS total_platform,
+        COALESCE(SUM(amount), 0) AS total_gross,
+        COALESCE(SUM(amount - platform_fee_amount), 0) AS total_net
+      FROM invoices
+      WHERE paid = true
+    `;
+    const feePercent = await getPlatformFeePercent();
+
+    res.json({
+      stats: {
+        totalUsers: Number(total_users),
+        totalRequests: Number(total_requests),
+        pendingJobs: Number(pending_jobs),
+        platformRevenue: Number(total_platform),
+        providerGrossPaid: Number(total_gross),
+        providerNetPaid: Number(total_net)
+      },
+      platformFeePercent: feePercent
+    });
+  } catch (err) {
+    console.error('Failed to load admin summary:', err);
+    res.status(500).json({ error: 'Failed to load summary' });
+  }
+});
+
+app.get('/admin/platform-fee', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const percent = await getPlatformFeePercent();
+    res.json({ percent });
+  } catch (err) {
+    console.error('Failed to load platform fee:', err);
+    res.status(500).json({ error: 'Failed to load platform fee' });
+  }
+});
+
+app.put('/admin/platform-fee', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { percent } = req.body || {};
+    const parsed = Number(percent);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+      return res.status(400).json({ error: 'Percent must be between 0 and 1' });
+    }
+    await updatePlatformFeePercent(parsed);
+    res.json({ percent: parsed });
+  } catch (err) {
+    console.error('Failed to update platform fee:', err);
+    res.status(500).json({ error: 'Failed to update platform fee' });
+  }
 });
 
 // ✅ List all users (without passwords)
@@ -875,8 +996,31 @@ app.put('/customer/profile', requireAuth, async (req, res) => {
   }
 });
 
-// ✅ Create new service request
-app.post("/service-requests", requireAuth, async (req, res) => {
+const MAX_SERVICE_REQUEST_ATTACHMENTS = 5;
+
+// Helper to serialize media rows consistently
+function serializeMediaRow(media) {
+  if (!media) return null;
+  const serializeDate = (value) => {
+    if (!value) return null;
+    if (value instanceof Date) return value.toISOString();
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
+  };
+  return {
+    id: media.id,
+    serviceRequestId: media.service_request_id,
+    url: media.url,
+    type: media.media_type || (media.mime_type?.startsWith('video/') ? 'video' : 'image'),
+    mimeType: media.mime_type || null,
+    originalName: media.original_name || null,
+    fileSize: media.file_size || null,
+    createdAt: serializeDate(media.created_at)
+  };
+}
+
+// ✅ Create new service request (supports optional attachments)
+app.post("/service-requests", requireAuth, upload.array('attachments', MAX_SERVICE_REQUEST_ATTACHMENTS), async (req, res) => {
   const {
     title: rawTitle,
     category,
@@ -899,6 +1043,17 @@ app.post("/service-requests", requireAuth, async (req, res) => {
     });
   }
 
+  try {
+    const [userRoleRow] = await sql`SELECT role FROM users WHERE id = ${customerId}`;
+    const dbRole = typeof userRoleRow?.role === 'string' ? userRoleRow.role.trim().toLowerCase() : '';
+    if (dbRole !== 'customer') {
+      return res.status(403).json({ error: 'Only customers can submit service requests' });
+    }
+  } catch (err) {
+    console.error('Failed to verify user role before creating request:', err);
+    return res.status(500).json({ error: 'Unable to verify user role' });
+  }
+
   if (preferred_date) {
     const parsedPreferred = new Date(preferred_date);
     if (Number.isNaN(parsedPreferred.getTime())) {
@@ -910,7 +1065,7 @@ app.post("/service-requests", requireAuth, async (req, res) => {
   try {
     await ensureServiceRequestSchema();
 
-    const result = await sql`
+    const inserted = await sql`
       INSERT INTO service_requests (
         customer_id,
         title,
@@ -932,10 +1087,48 @@ app.post("/service-requests", requireAuth, async (req, res) => {
       RETURNING *
     `;
 
+    const createdRequest = inserted[0];
+
+    const serializeDate = (value) => {
+      if (!value) return null;
+      if (value instanceof Date) return value.toISOString();
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
+    };
+
+    // Store attachment metadata if files uploaded
+    let attachments = [];
+    if (Array.isArray(req.files) && req.files.length > 0) {
+      const saved = [];
+      for (const file of req.files) {
+        const publicUrl = `/uploads/${file.filename}`;
+        const mediaType = file.mimetype?.startsWith('video/')
+          ? 'video'
+          : file.mimetype?.startsWith('image/')
+            ? 'image'
+            : 'file';
+        const [media] = await sql`
+          INSERT INTO service_request_media (service_request_id, url, media_type, mime_type, original_name, file_size)
+          VALUES (${createdRequest.id}, ${publicUrl}, ${mediaType}, ${file.mimetype}, ${file.originalname}, ${file.size})
+          RETURNING id, service_request_id, url, media_type, mime_type, original_name, file_size, created_at
+        `;
+        saved.push(media);
+      }
+
+      attachments = saved.map(serializeMediaRow);
+    }
+
     console.log(`✅ Service request created by user ${customerId}`);
     res.status(201).json({
       message: "Service request created successfully",
-      request: result[0]
+      request: {
+        ...createdRequest,
+        preferred_date: serializeDate(createdRequest.preferred_date),
+        preferred_timezone: createdRequest.preferred_timezone || null,
+        created_at: serializeDate(createdRequest.created_at),
+        updated_at: serializeDate(createdRequest.updated_at),
+        attachments
+      }
     });
   } catch (err) {
     console.error("Error creating service request:", err);
@@ -967,6 +1160,7 @@ app.get("/provider/jobs", requireAuth, requireProvider, async (req, res) => {
             sr.preferred_timezone,
             sr.status,
             sr.created_at,
+            sr.assigned_provider_id,
             u.name AS customer_name,
             u.email AS customer_email,
             u.phone AS customer_phone
@@ -995,15 +1189,43 @@ app.get("/provider/jobs", requireAuth, requireProvider, async (req, res) => {
           ORDER BY sr.created_at DESC
         `;
 
+    const serializeDate = (value) => {
+      if (!value) return null;
+      if (value instanceof Date) return value.toISOString();
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
+    };
+
+    const requestIds = requests.map((r) => r.id);
+    let mediaRows = [];
+    if (requestIds.length > 0) {
+      mediaRows = await sql`
+        SELECT id, service_request_id, url, media_type, mime_type, original_name, file_size, created_at
+        FROM service_request_media
+        WHERE service_request_id = ANY(${requestIds})
+        ORDER BY id
+      `;
+    }
+
+    const attachmentsMap = new Map();
+    for (const media of mediaRows) {
+      const normalized = {
+        id: media.id,
+        serviceRequestId: media.service_request_id,
+        url: media.url,
+        type: media.media_type || (media.mime_type?.startsWith('video/') ? 'video' : 'image'),
+        mimeType: media.mime_type || null,
+        originalName: media.original_name || null,
+        fileSize: media.file_size || null,
+        createdAt: serializeDate(media.created_at)
+      };
+      const bucket = attachmentsMap.get(media.service_request_id) || [];
+      bucket.push(normalized);
+      attachmentsMap.set(media.service_request_id, bucket);
+    }
+
     res.json(
       requests.map((request) => {
-        const serializeDate = (value) => {
-          if (!value) return null;
-          if (value instanceof Date) return value.toISOString();
-          const parsed = new Date(value);
-          return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
-        };
-
         return {
           id: request.id,
           title: request.title,
@@ -1018,6 +1240,7 @@ app.get("/provider/jobs", requireAuth, requireProvider, async (req, res) => {
           customerPhone: request.customer_phone || "",
           assignedProviderId: request.assigned_provider_id || null,
           assignedToMe: request.assigned_provider_id === req.user.id,
+          attachments: attachmentsMap.get(request.id) || []
         };
       })
     );
@@ -1288,12 +1511,40 @@ app.get('/provider/my-jobs', requireAuth, requireProvider, async (req, res) => {
       }
     }
 
+    // fetch attachments for these service requests
+    let mediaRows = [];
+    if (ids.length) {
+      mediaRows = await sql`
+        SELECT id, service_request_id, url, media_type, mime_type, original_name, file_size, created_at
+        FROM service_request_media
+        WHERE service_request_id = ANY(${ids})
+        ORDER BY id
+      `;
+    }
+
     const serializeDate = (value) => {
       if (!value) return null;
       if (value instanceof Date) return value.toISOString();
       const parsed = new Date(value);
       return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
     };
+
+    const attachmentsMap = new Map();
+    for (const media of mediaRows) {
+      const normalized = {
+        id: media.id,
+        serviceRequestId: media.service_request_id,
+        url: media.url,
+        type: media.media_type || (media.mime_type?.startsWith('video/') ? 'video' : 'image'),
+        mimeType: media.mime_type || null,
+        originalName: media.original_name || null,
+        fileSize: media.file_size || null,
+        createdAt: serializeDate(media.created_at)
+      };
+      const bucket = attachmentsMap.get(media.service_request_id) || [];
+      bucket.push(normalized);
+      attachmentsMap.set(media.service_request_id, bucket);
+    }
 
     res.json(jobs.map((request) => ({
       id: request.id,
@@ -1308,12 +1559,59 @@ app.get('/provider/my-jobs', requireAuth, requireProvider, async (req, res) => {
       customerEmail: request.customer_email || '',
       customerPhone: request.customer_phone || '',
       assignedToMe: request.assigned_provider_id === providerId,
+      attachments: attachmentsMap.get(request.id) || [],
       updates: updates.filter(u => u.service_request_id === request.id).map(u => ({ id: u.id, message: u.message, imageUrl: u.image_url, createdAt: serializeDate(u.created_at) })),
-      invoices: invoices.filter(i => i.service_request_id === request.id).map(i => ({ id: i.id, amount: Number(i.amount ?? i.total_amount), currency: i.currency, notes: i.notes, paid: i.paid, createdAt: serializeDate(i.created_at), paidAt: serializeDate(i.paid_at) }))
+      invoices: invoices.filter(i => i.service_request_id === request.id).map(i => ({
+        id: i.id,
+        amount: Number(i.amount ?? i.total_amount),
+        currency: i.currency,
+        notes: i.notes,
+        paid: i.paid,
+        createdAt: serializeDate(i.created_at),
+        paidAt: serializeDate(i.paid_at),
+        platformFeePercent: Number(i.platform_fee_percent || 0),
+        platformFeeAmount: Number(i.platform_fee_amount || 0),
+        netAmount: Number((Number(i.amount ?? i.total_amount) || 0) - (Number(i.platform_fee_amount) || 0))
+      }))
     })));
   } catch (err) {
     console.error('Error fetching my jobs:', err);
     res.status(500).json({ error: 'Failed to fetch my jobs' });
+  }
+});
+
+app.get('/provider/earnings', requireAuth, requireProvider, async (req, res) => {
+  try {
+    await ensureServiceRequestSchema();
+    const providerId = req.user.id;
+    const feePercent = await getPlatformFeePercent();
+    const [{ total_gross = 0, total_fee = 0 } = {}] = await sql`
+      SELECT
+        COALESCE(SUM(amount), 0) AS total_gross,
+        COALESCE(SUM(platform_fee_amount), 0) AS total_fee
+      FROM invoices
+      WHERE provider_id = ${providerId} AND paid = true
+    `;
+    const [{ unpaid_gross = 0 } = {}] = await sql`
+      SELECT COALESCE(SUM(amount), 0) AS unpaid_gross
+      FROM invoices
+      WHERE provider_id = ${providerId} AND paid = false
+    `;
+
+    const gross = Number(total_gross) || 0;
+    const fee = Number(total_fee) || 0;
+    const unpaid = Number(unpaid_gross) || 0;
+
+    res.json({
+      totalGross: gross,
+      totalFees: fee,
+      totalNet: Number(gross - fee),
+      unpaidGross: unpaid,
+      feePercent
+    });
+  } catch (err) {
+    console.error('Error fetching provider earnings:', err);
+    res.status(500).json({ error: 'Failed to load earnings' });
   }
 });
 
@@ -1343,10 +1641,15 @@ app.post('/invoices', requireAuth, requireProvider, async (req, res) => {
     if (job.assigned_provider_id !== providerId) return res.status(403).json({ error: 'Only assigned provider can create invoice' });
     if ((job.status || '').toLowerCase() !== 'done') return res.status(400).json({ error: 'Invoice can only be created for completed jobs' });
 
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) return res.status(400).json({ error: 'Invalid amount' });
+    const feePercent = await getPlatformFeePercent();
+    const platformFeeAmount = feePercent > 0 ? Number((numericAmount * feePercent).toFixed(2)) : 0;
+
     const inserted = await sql`
-      INSERT INTO invoices (service_request_id, provider_id, customer_id, amount, total_amount, currency, notes)
-      VALUES (${srId}, ${providerId}, ${job.customer_id}, ${amount}, ${amount}, ${currency}, ${notes})
-      RETURNING id, service_request_id, provider_id, customer_id, COALESCE(amount, total_amount) AS amount, currency, notes, paid, created_at
+      INSERT INTO invoices (service_request_id, provider_id, customer_id, amount, total_amount, currency, notes, platform_fee_percent, platform_fee_amount)
+      VALUES (${srId}, ${providerId}, ${job.customer_id}, ${numericAmount}, ${numericAmount}, ${currency}, ${notes}, ${feePercent}, ${platformFeeAmount})
+      RETURNING id, service_request_id, provider_id, customer_id, COALESCE(amount, total_amount) AS amount, currency, notes, paid, created_at, platform_fee_percent, platform_fee_amount
     `;
 
     const invoice = inserted[0];
@@ -1359,7 +1662,21 @@ app.post('/invoices', requireAuth, requireProvider, async (req, res) => {
       console.error('Failed to create invoice notification:', nerr);
     }
 
-    res.status(201).json({ invoice });
+    const responseInvoice = {
+      id: invoice.id,
+      service_request_id: invoice.service_request_id,
+      provider_id: invoice.provider_id,
+      customer_id: invoice.customer_id,
+      amount: Number(invoice.amount),
+      currency: invoice.currency,
+      notes: invoice.notes,
+      paid: invoice.paid,
+      created_at: invoice.created_at,
+      platform_fee_percent: Number(invoice.platform_fee_percent || 0),
+      platform_fee_amount: Number(invoice.platform_fee_amount || 0)
+    };
+
+    res.status(201).json({ invoice: responseInvoice });
   } catch (err) {
     console.error('Error creating invoice:', err);
     res.status(500).json({ error: 'Failed to create invoice' });
@@ -1386,7 +1703,22 @@ app.get('/invoices', requireAuth, async (req, res) => {
     }
 
     const serializeDate = (v) => (v ? (v instanceof Date ? v.toISOString() : String(v)) : null);
-    res.json(rows.map(r => ({ id: r.id, serviceRequestId: r.service_request_id, serviceTitle: r.service_title || '', providerId: r.provider_id, customerId: r.customer_id, amount: Number(r.amount), currency: r.currency, notes: r.notes, paid: r.paid, paidAt: serializeDate(r.paid_at), createdAt: serializeDate(r.created_at) })));
+    res.json(rows.map(r => ({
+      id: r.id,
+      serviceRequestId: r.service_request_id,
+      serviceTitle: r.service_title || '',
+      providerId: r.provider_id,
+      customerId: r.customer_id,
+      amount: Number(r.amount),
+      currency: r.currency,
+      notes: r.notes,
+      paid: r.paid,
+      paidAt: serializeDate(r.paid_at),
+      createdAt: serializeDate(r.created_at),
+      platformFeePercent: Number(r.platform_fee_percent || 0),
+      platformFeeAmount: Number(r.platform_fee_amount || 0),
+      netAmount: Number((Number(r.amount) || 0) - (Number(r.platform_fee_amount) || 0))
+    })));
   } catch (err) {
     console.error('Error fetching invoices:', err);
     res.status(500).json({ error: 'Failed to fetch invoices' });
@@ -1472,7 +1804,12 @@ app.post('/invoices/:id/create-checkout', requireAuth, async (req, res) => {
   if (Number.isNaN(invoiceId)) return res.status(400).json({ error: 'Invalid invoice id' });
 
   // fetch invoice and validate access
-  const [inv] = await sql`SELECT id, amount, currency, customer_id FROM invoices WHERE id = ${invoiceId}`;
+  const [inv] = await sql`
+    SELECT i.id, i.amount, i.currency, i.customer_id, i.provider_id, u.email AS customer_email
+    FROM invoices i
+    LEFT JOIN users u ON u.id = i.customer_id
+    WHERE i.id = ${invoiceId}
+  `;
   if (!inv) return res.status(404).json({ error: 'Invoice not found' });
 
   // Only allow the invoice customer, assigned provider, or admin to create a checkout session
@@ -1507,21 +1844,27 @@ app.post('/invoices/:id/create-checkout', requireAuth, async (req, res) => {
     }
     const stripe = Stripe(stripeKey);
 
-    const successUrl = `${process.env.STRIPE_SUCCESS_URL || 'http://localhost:3000'}/`; // could be customized
-    const cancelUrl = `${process.env.STRIPE_CANCEL_URL || 'http://localhost:3000'}/`;
+    const clientOverride = typeof req.body?.clientOrigin === 'string' && req.body.clientOrigin.trim().length
+      ? req.body.clientOrigin.trim()
+      : null;
+    const clientBase = (clientOverride || process.env.CLIENT_BASE_URL || req.headers.origin || 'http://localhost:3000').replace(/\/$/, '');
+    const successUrl = process.env.STRIPE_SUCCESS_URL || `${clientBase}/customer/dashboard?payment=success`;
+    const cancelUrl = process.env.STRIPE_CANCEL_URL || `${clientBase}/customer/dashboard?payment=cancel`;
 
     // amount in smallest currency unit (cents)
     const amount = Math.round(Number(inv.amount) * 100);
 
-    const session = await stripe.checkout.sessions.create({
+    const checkoutPayload = {
       payment_method_types: ['card'],
       mode: 'payment',
       line_items: [{ price_data: { currency: inv.currency || 'usd', product_data: { name: `Invoice #${inv.id}` }, unit_amount: amount }, quantity: 1 }],
-      customer_email: null,
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: { invoiceId: String(inv.id) }
-    });
+    };
+    if (inv.customer_email) checkoutPayload.customer_email = inv.customer_email;
+
+    const session = await stripe.checkout.sessions.create(checkoutPayload);
 
     return res.json({ url: session.url });
   } catch (err) {
@@ -1752,6 +2095,34 @@ app.get("/service-requests/my-requests", requireAuth, async (req, res) => {
       return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
     };
 
+    const requestIds = requests.map((r) => r.id);
+    let mediaRows = [];
+    if (requestIds.length > 0) {
+      mediaRows = await sql`
+        SELECT id, service_request_id, url, media_type, mime_type, original_name, file_size, created_at
+        FROM service_request_media
+        WHERE service_request_id = ANY(${requestIds})
+        ORDER BY id
+      `;
+    }
+
+    const attachmentsMap = new Map();
+    for (const media of mediaRows) {
+      const normalized = {
+        id: media.id,
+        serviceRequestId: media.service_request_id,
+        url: media.url,
+        type: media.media_type || (media.mime_type?.startsWith('video/') ? 'video' : 'image'),
+        mimeType: media.mime_type || null,
+        originalName: media.original_name || null,
+        fileSize: media.file_size || null,
+        createdAt: serializeDate(media.created_at)
+      };
+      const bucket = attachmentsMap.get(media.service_request_id) || [];
+      bucket.push(normalized);
+      attachmentsMap.set(media.service_request_id, bucket);
+    }
+
     res.json(
       requests.map((request) => ({
         ...request,
@@ -1759,6 +2130,7 @@ app.get("/service-requests/my-requests", requireAuth, async (req, res) => {
         preferred_timezone: request.preferred_timezone || null,
         created_at: serializeDate(request.created_at),
         updated_at: serializeDate(request.updated_at),
+        attachments: attachmentsMap.get(request.id) || []
       }))
     );
   } catch (err) {
@@ -1896,6 +2268,108 @@ app.patch('/service-requests/:id', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Error updating service request:', err);
     res.status(500).json({ error: 'Failed to update service request' });
+  }
+});
+
+// Generic error handler (surface friendlier upload errors)
+app.use((err, req, res, next) => {
+  if (!err) return next();
+  if (err instanceof multer.MulterError) {
+    console.error('Upload error:', err);
+    return res.status(400).json({ error: err.message });
+  }
+  if (err.message === 'Only image or video uploads are allowed') {
+    return res.status(400).json({ error: err.message });
+  }
+  console.error('Unhandled server error:', err);
+  return res.status(500).json({ error: 'Internal server error' });
+});
+
+// Add attachments to an existing request (customer only, pending state)
+app.post('/service-requests/:id/attachments', requireAuth, upload.array('attachments', MAX_SERVICE_REQUEST_ATTACHMENTS), async (req, res) => {
+  const requestId = Number.parseInt(req.params.id, 10);
+  if (Number.isNaN(requestId)) return res.status(400).json({ error: 'Invalid request id' });
+  if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'No files uploaded' });
+
+  try {
+    await ensureServiceRequestSchema();
+    const [existing] = await sql`SELECT id, customer_id, status FROM service_requests WHERE id = ${requestId}`;
+    if (!existing) return res.status(404).json({ error: 'Service request not found' });
+    if (existing.customer_id !== req.user.id) return res.status(403).json({ error: 'Only the owner can modify attachments' });
+    const currentStatus = (existing.status || 'pending').toLowerCase();
+    if (currentStatus !== 'pending') {
+      return res.status(403).json({ error: 'Attachments can only be edited while request status is pending' });
+    }
+
+    const [{ cnt }] = await sql`SELECT COUNT(*)::int AS cnt FROM service_request_media WHERE service_request_id = ${requestId}`;
+    const existingCount = Number(cnt || 0);
+    if (existingCount + req.files.length > MAX_SERVICE_REQUEST_ATTACHMENTS) {
+      return res.status(400).json({ error: `You can only have up to ${MAX_SERVICE_REQUEST_ATTACHMENTS} attachments per request.` });
+    }
+
+    const inserted = [];
+    for (const file of req.files) {
+      const publicUrl = `/uploads/${file.filename}`;
+      const mediaType = file.mimetype?.startsWith('video/')
+        ? 'video'
+        : file.mimetype?.startsWith('image/')
+          ? 'image'
+          : 'file';
+      const [media] = await sql`
+        INSERT INTO service_request_media (service_request_id, url, media_type, mime_type, original_name, file_size)
+        VALUES (${requestId}, ${publicUrl}, ${mediaType}, ${file.mimetype}, ${file.originalname}, ${file.size})
+        RETURNING id, service_request_id, url, media_type, mime_type, original_name, file_size, created_at
+      `;
+      inserted.push(media);
+    }
+
+    res.status(201).json({ attachments: inserted.map(serializeMediaRow) });
+  } catch (err) {
+    console.error('Error adding attachments:', err);
+    res.status(500).json({ error: 'Failed to add attachments' });
+  }
+});
+
+// Delete an attachment from a request
+app.delete('/service-requests/:id/attachments/:attachmentId', requireAuth, async (req, res) => {
+  const requestId = Number.parseInt(req.params.id, 10);
+  const attachmentId = Number.parseInt(req.params.attachmentId, 10);
+  if (Number.isNaN(requestId) || Number.isNaN(attachmentId)) {
+    return res.status(400).json({ error: 'Invalid id' });
+  }
+
+  try {
+    await ensureServiceRequestSchema();
+    const [existing] = await sql`SELECT id, customer_id, status FROM service_requests WHERE id = ${requestId}`;
+    if (!existing) return res.status(404).json({ error: 'Service request not found' });
+    if (existing.customer_id !== req.user.id) return res.status(403).json({ error: 'Only the owner can modify attachments' });
+    const currentStatus = (existing.status || 'pending').toLowerCase();
+    if (currentStatus !== 'pending') {
+      return res.status(403).json({ error: 'Attachments can only be edited while request status is pending' });
+    }
+
+    const [media] = await sql`
+      SELECT id, url
+      FROM service_request_media
+      WHERE id = ${attachmentId} AND service_request_id = ${requestId}
+    `;
+    if (!media) return res.status(404).json({ error: 'Attachment not found' });
+
+    await sql`DELETE FROM service_request_media WHERE id = ${attachmentId}`;
+
+    if (media.url && typeof media.url === 'string' && media.url.startsWith('/uploads/')) {
+      const filePath = path.join(process.cwd(), 'public', media.url);
+      fs.unlink(filePath, (unlinkErr) => {
+        if (unlinkErr && unlinkErr.code !== 'ENOENT') {
+          console.warn('Failed to delete attachment file:', unlinkErr);
+        }
+      });
+    }
+
+    res.json({ message: 'Attachment deleted', attachmentId });
+  } catch (err) {
+    console.error('Error deleting attachment:', err);
+    res.status(500).json({ error: 'Failed to delete attachment' });
   }
 });
 

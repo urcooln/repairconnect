@@ -2,6 +2,13 @@ import React, { useEffect, useState } from 'react';
 import styles from '../pages/ProviderDashboard.module.css';
 import * as api from '../services/api';
 import { getHeaders } from '../services/api';
+const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8081';
+
+const buildAttachmentUrl = (url) => {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  return url.startsWith('/') ? `${API_BASE}${url}` : url;
+};
 
 const MyJobs = () => {
   const [jobs, setJobs] = useState([]);
@@ -31,6 +38,11 @@ const MyJobs = () => {
 
   useEffect(() => {
     fetchMyJobs();
+    const handleExternalRefresh = () => {
+      fetchMyJobs();
+    };
+    window.addEventListener('refresh-my-jobs', handleExternalRefresh);
+    return () => window.removeEventListener('refresh-my-jobs', handleExternalRefresh);
   }, []);
 
   const handleSubmitUpdate = async (jobId, formState, clearForm) => {
@@ -203,6 +215,32 @@ const MyJobs = () => {
               </div>
 
               <p className={styles.jobDescription}>{job.description}</p>
+              {Array.isArray(job.attachments) && job.attachments.length > 0 && (
+                <div className={styles.attachmentsBlock}>
+                  <strong>Customer Attachments</strong>
+                  <div className={styles.attachmentsGrid}>
+                    {job.attachments.map((att) => {
+                      const mediaUrl = buildAttachmentUrl(att.url);
+                      return (
+                        <a
+                          key={`job-${job.id}-attachment-${att.id || mediaUrl}`}
+                          href={mediaUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={styles.attachmentItem}
+                        >
+                          {att.type === 'video' ? (
+                            <video className={styles.attachmentPreview} src={mediaUrl} muted playsInline />
+                          ) : (
+                            <img className={styles.attachmentPreview} src={mediaUrl} alt={att.originalName || 'Attachment'} />
+                          )}
+                          {att.type === 'video' && <span className={styles.attachmentLabel}>Video</span>}
+                        </a>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <strong>Customer:</strong> {job.customerName || job.customerEmail || 'Unknown'}

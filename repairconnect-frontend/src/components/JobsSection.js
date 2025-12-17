@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom';
 import styles from '../pages/ProviderDashboard.module.css';
 // Keep JobsSection focused on opportunities; job lifecycle (start/finish/invoice)
 // is handled in `MyJobs` to ensure invoices are created in the job context.
+const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8081';
 
 const formatDateTime = (value, timeZone) => {
   if (!value) return 'Not provided';
@@ -27,6 +28,12 @@ const formatDateTime = (value, timeZone) => {
 };
 
 const normalizeValue = (value) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
+
+const buildAttachmentUrl = (url) => {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  return url.startsWith('/') ? `${API_BASE}${url}` : url;
+};
 
 const JobsSection = ({ jobs = [], providerRoles = [], refreshJobs = null }) => {
   const [selectedRole, setSelectedRole] = useState('all');
@@ -84,6 +91,7 @@ const JobsSection = ({ jobs = [], providerRoles = [], refreshJobs = null }) => {
       }
       // refresh parent job list if possible
       if (typeof refreshJobs === 'function') await refreshJobs();
+      window.dispatchEvent(new Event('refresh-my-jobs'));
       // no immediate invoice UI here; job management/invoicing happens in MyJobs
     } catch (err) {
       // eslint-disable-next-line no-alert
@@ -177,6 +185,32 @@ const JobsSection = ({ jobs = [], providerRoles = [], refreshJobs = null }) => {
               </span>
             </div>
             <p className={styles.jobDescription}>{job.description}</p>
+            {Array.isArray(job.attachments) && job.attachments.length > 0 && (
+              <div className={styles.attachmentsBlock}>
+                <strong>Customer Attachments</strong>
+                <div className={styles.attachmentsGrid}>
+                  {job.attachments.map((att) => {
+                    const mediaUrl = buildAttachmentUrl(att.url);
+                    return (
+                      <a
+                        key={`${job.id}-att-${att.id || mediaUrl}`}
+                        href={mediaUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={styles.attachmentItem}
+                      >
+                        {att.type === 'video' ? (
+                          <video className={styles.attachmentPreview} src={mediaUrl} muted playsInline />
+                        ) : (
+                          <img className={styles.attachmentPreview} src={mediaUrl} alt={att.originalName || 'Attachment'} />
+                        )}
+                        {att.type === 'video' && <span className={styles.attachmentLabel}>Video</span>}
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className={styles.jobMeta}>
               {job.customerName && (
                 <span className={styles.jobTag}>

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useDropzone } from 'react-dropzone';
 import { useNavigate } from 'react-router-dom';
 import styles from '../pages/ProviderDashboard.module.css';
+import { removeToken } from '../utils/auth';
 
 const AVAILABLE_ROLES = [
   'Plumber',
@@ -68,7 +69,7 @@ const ProfileSection = ({ provider, onSave }) => {
   }, [isEditing]);
 
   const handleLogout = () => {
-    localStorage.clear();
+    removeToken();
     sessionStorage.clear();
     navigate('/');
   };

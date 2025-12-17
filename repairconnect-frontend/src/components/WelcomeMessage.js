@@ -1,34 +1,28 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import styles from '../pages/ProviderDashboard.module.css';
 
 const WelcomeMessage = ({ firstName, email }) => {
   const [visible, setVisible] = useState(true);
-  
-  console.log('WelcomeMessage props:', { firstName, email });
 
-  useEffect(() => {
-    console.log('WelcomeMessage mounted');
-    // Hide message after 2 seconds
-    const timer = setTimeout(() => {
-      setVisible(false);
-      console.log('WelcomeMessage timer completed');
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  const handleClick = () => {
-    setVisible(false);
-  };
-
-  if (!visible) return null;
+  if (!firstName || !visible) {
+    return null;
+  }
 
   return (
-    <div className={styles.welcomeMessage} onClick={handleClick}>
+    <div className={styles.welcomeMessage} role="region" aria-live="polite">
       <div className={styles.welcomeContent}>
-        <h2>Welcome, {firstName}!</h2>
-        <p>{email}</p>
+        <span className={styles.welcomeLabel}>Welcome back</span>
+        <h2 className={styles.welcomeName}>{firstName}</h2>
+        {email && <p className={styles.welcomeEmail}>{email}</p>}
       </div>
+      <button
+        type="button"
+        className={styles.welcomeDismiss}
+        onClick={() => setVisible(false)}
+        aria-label="Dismiss welcome message"
+      >
+        {'\u00D7'}
+      </button>
     </div>
   );
 };

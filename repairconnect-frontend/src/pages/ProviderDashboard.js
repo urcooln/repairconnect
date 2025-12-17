@@ -48,6 +48,8 @@ const ProviderDashboard = () => {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [earnings, setEarnings] = useState(null);
+  const [earningsError, setEarningsError] = useState(null);
 
   useEffect(() => {
     const fetchProviderData = async () => {
@@ -81,6 +83,16 @@ const ProviderDashboard = () => {
     };
 
     fetchProviderData();
+    (async () => {
+      try {
+        const earningsData = await api.getProviderEarnings();
+        setEarnings(earningsData);
+        setEarningsError(null);
+      } catch (err) {
+        console.error('Error loading earnings:', err);
+        setEarningsError('Unable to load earnings summary');
+      }
+    })();
   }, []);
 
 
@@ -130,31 +142,69 @@ const ProviderDashboard = () => {
     );
   }
 
+  const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+  const earningsStats = earnings ? [
+    { label: 'Gross Paid', value: currencyFormatter.format(earnings.totalGross || 0) },
+    { label: 'Platform Fees', value: currencyFormatter.format(earnings.totalFees || 0) },
+    { label: 'Net Paid', value: currencyFormatter.format(earnings.totalNet || 0) },
+    { label: 'Unpaid Invoices', value: currencyFormatter.format(earnings.unpaidGross || 0) },
+    { label: 'Platform Fee', value: `${((earnings.feePercent || 0) * 100).toFixed(1)}%` }
+  ] : [];
+
   return (
     <div className={styles.container}>
-      <header className={styles.pageHeader}>
-        <h1 className={styles.pageTitle}>
-          <span className={styles.brandHighlight}>RepairConnect</span> Provider Dashboard
-        </h1>
-        <p className={styles.pageSubtitle}>
-          Manage your profile, showcase your services, and discover new opportunities tailored to you.
-        </p>
-      </header>
-      {provider.firstName && <WelcomeMessage firstName={provider.firstName} email={provider.email} />}
-      
-      <ProfileSection 
-        provider={provider}
-        onSave={handleProfileUpdate}
-      />
-      
-      <div className={styles.rightColumn}>
-        <JobsSection 
-          jobs={jobs}
-          providerRoles={provider.roles}
-          refreshJobs={refreshJobs}
-        />
+      <div className={styles.layout}>
+        <aside className={styles.sidebar}>
+          <ProfileSection 
+            provider={provider}
+            onSave={handleProfileUpdate}
+          />
+        </aside>
 
-        <MyJobs />
+        <div className={styles.mainContent}>
+          <section className={`${styles.contentCard} ${styles.pageIntro}`}>
+            <header className={styles.pageHeader}>
+              <h1 className={styles.pageTitle}>
+                <span className={styles.brandHighlight}>RepairConnect</span> Provider Dashboard
+              </h1>
+              <p className={styles.pageSubtitle}>
+                Manage your profile, showcase your services, and discover new opportunities tailored to you.
+              </p>
+            </header>
+            {provider.firstName && (
+              <WelcomeMessage firstName={provider.firstName} email={provider.email} />
+            )}
+          </section>
+
+          {earningsError && <div className={`${styles.contentCard} ${styles.errorCard}`}>{earningsError}</div>}
+
+          {earningsStats.length > 0 && (
+            <section className={`${styles.contentCard} ${styles.statsSection}`}>
+              <div className={styles.sectionHeaderRow}>
+                <h2 className={styles.sectionTitle}>Earnings Snapshot</h2>
+                <p className={styles.sectionSubtitle}>Track how much you have earned after platform fees.</p>
+              </div>
+              <div className={styles.stats}>
+                {earningsStats.map((stat) => (
+                  <div key={stat.label} className={styles.statBox}>
+                    <h3>{stat.label}</h3>
+                    <p>{stat.value}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <div className={styles.rightColumn}>
+            <JobsSection 
+              jobs={jobs}
+              providerRoles={provider.roles}
+              refreshJobs={refreshJobs}
+            />
+
+            <MyJobs />
+          </div>
+        </div>
       </div>
     </div>
   );

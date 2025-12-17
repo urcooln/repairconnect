@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { getHeaders } from "../services/api";
+import { getToken, removeToken } from '../utils/auth';
 import styles from "./AdminDashboard.module.css";
 
 const API_BASE = "http://localhost:8081";
@@ -24,7 +25,7 @@ function AdminRequests() {
   // ✅ Fetch service requests from backend (read token at effect time)
   useEffect(() => {
     async function fetchRequests() {
-      const token = localStorage.getItem("token");
+      const token = getToken();
       if (!token) return;
 
       try {
@@ -58,7 +59,7 @@ function AdminRequests() {
   }
 
   function handleLogout() {
-    localStorage.removeItem("token");
+    removeToken();
     window.location.href = "/";
   }
 
@@ -70,7 +71,7 @@ function AdminRequests() {
 
   // ✅ Handle Delete Request
   async function handleDeleteRequest() {
-    const tokenNow = localStorage.getItem("token");
+    const tokenNow = getToken();
     if (!tokenNow || !selectedRequest) return;
 
     try {
@@ -96,7 +97,7 @@ function AdminRequests() {
   }
 
   async function handleChangeStatus(requestId) {
-    const token = localStorage.getItem('token');
+    const token = getToken();
     const status = selectedStatuses[requestId];
     if (!token || !status) return;
     try {

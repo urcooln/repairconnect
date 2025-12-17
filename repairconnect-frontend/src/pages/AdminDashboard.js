@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import styles from "./AdminDashboard.module.css";
-import { getHeaders } from '../services/api';
+import { getHeaders, getPlatformFee, updatePlatformFee } from '../services/api';
+import { getToken, removeToken } from '../utils/auth';
 
 const API_BASE = "http://localhost:8081";
 
@@ -23,11 +24,16 @@ function AdminDashboard() {
   const [roleFilter, setRoleFilter] = useState("all");
   // Status filter (Active, Pending, Suspended, Banned)
   const [statusFilter, setStatusFilter] = useState("all");
+  const [platformFeePercent, setPlatformFeePercent] = useState("");
+  const [platformFeeLoading, setPlatformFeeLoading] = useState(true);
+  const [platformFeeSaving, setPlatformFeeSaving] = useState(false);
+  const [platformFeeError, setPlatformFeeError] = useState("");
+  const [platformFeeSuccess, setPlatformFeeSuccess] = useState("");
 
-  const token = localStorage.getItem("token");
+  const token = getToken();
 
   useEffect(() => {
-    if (!localStorage.getItem('token')) {
+    if (!getToken()) {
       setError("Missing token");
       setLoading(false);
       return;
@@ -66,12 +72,36 @@ function AdminDashboard() {
     fetchData();
   }, [token]);
 
+  useEffect(() => {
+    if (!token) return;
+
+    const loadPlatformFee = async () => {
+      try {
+        setPlatformFeeLoading(true);
+        setPlatformFeeError("");
+        const data = await getPlatformFee();
+        const next = typeof data.percent === "number"
+          ? (data.percent * 100).toFixed(2)
+          : "";
+        setPlatformFeePercent(next);
+      } catch (err) {
+        console.error("Failed to load platform rate", err);
+        setPlatformFeeError(err.message || "Failed to load platform rate");
+      } finally {
+        setPlatformFeeLoading(false);
+      }
+    };
+
+    loadPlatformFee();
+  }, [token]);
+
+
   function confirmLogout() {
     setLogoutVisible(true);
   }
 
   function handleLogout() {
-    localStorage.removeItem("token");
+    removeToken();
     window.location.href = "/";
   }
 
@@ -88,9 +118,32 @@ function AdminDashboard() {
     setConfirmAction(null);
   }
 
+  async function handlePlatformFeeSave() {
+    setPlatformFeeError("");
+    setPlatformFeeSuccess("");
+    const numeric = Number(platformFeePercent);
+    if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) {
+      setPlatformFeeError("Enter a rate between 0 and 100");
+      return;
+    }
+
+    try {
+      setPlatformFeeSaving(true);
+      await updatePlatformFee(numeric / 100);
+      setPlatformFeeSuccess("Platform rate updated");
+      setTimeout(() => setPlatformFeeSuccess(""), 3000);
+    } catch (err) {
+      console.error("Failed to update platform fee", err);
+      setPlatformFeeError(err.message || "Failed to update platform rate");
+    } finally {
+      setPlatformFeeSaving(false);
+    }
+  }
+
+
   // Handles the approval of a provider.
   async function handleApprove(userId) {
-    if (!localStorage.getItem('token')) return;
+    if (!getToken()) return;
 
     try {
       setActioningId(userId);
@@ -245,6 +298,28 @@ function AdminDashboard() {
     return date.toLocaleDateString("en-US"); // MM/DD/YYYY
   }
 
+  const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+  const formatCurrency = (value) => currencyFormatter.format(Number(value || 0));
+
+  const summaryItems = summary?.stats ? [
+    { label: 'Platform Revenue', value: formatCurrency(summary.stats.platformRevenue), variant: 'primary' },
+    { label: 'Provider Gross Paid', value: formatCurrency(summary.stats.providerGrossPaid), variant: 'primary' },
+    { label: 'Provider Net Paid', value: formatCurrency(summary.stats.providerNetPaid), variant: 'primary' },
+    { label: 'Total Users', value: summary.stats.totalUsers },
+    { label: 'Total Requests', value: summary.stats.totalRequests },
+    { label: 'Pending Jobs', value: summary.stats.pendingJobs },
+  ] : [];
+
+  if (typeof summary?.platformFeePercent === 'number') {
+    summaryItems.push({
+      label: 'Platform Fee %',
+      value: `${((summary.platformFeePercent || 0) * 100).toFixed(1)}%`
+    });
+  }
+
+  const primaryStats = summaryItems.filter((item) => item.variant === 'primary');
+  const secondaryStats = summaryItems.filter((item) => item.variant !== 'primary');
+
   return (
     <div className={styles.container}>
       <h1 className={styles.title}>Admin Dashboard</h1>
@@ -265,16 +340,75 @@ function AdminDashboard() {
 
       {!loading && !error && (
         <>
-          {summary && summary.stats && (
-            <section className={styles.summarySection}>
-              <div className={styles.summaryGrid}>
-                {Object.entries(summary.stats).map(([label, value]) => (
-                  <div key={label} className={styles.summaryCard}>
-                    <div className={styles.summaryLabel}>{label}</div>
-                    <div className={styles.summaryValue}>{value}</div>
-                  </div>
-                ))}
+          <section className={styles.platformFeeSection}>
+            <div>
+              <h2 className={styles.sectionTitle}>Platform Rate</h2>
+              <p className={styles.platformFeeDescription}>
+                Set the percentage withheld from each provider payout.
+              </p>
+            </div>
+            <div className={styles.platformFeeControls}>
+              <div className={styles.platformFeeField}>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={platformFeePercent}
+                  onChange={(e) => {
+                    setPlatformFeePercent(e.target.value);
+                    setPlatformFeeSuccess("");
+                    setPlatformFeeError("");
+                  }}
+                  className={styles.platformFeeInput}
+                  disabled={platformFeeLoading || platformFeeSaving}
+                />
+                <span className={styles.platformFeeSuffix}>%</span>
               </div>
+              <button
+                onClick={handlePlatformFeeSave}
+                className={styles.platformFeeButton}
+                disabled={platformFeeSaving || platformFeeLoading || platformFeePercent === ""}
+              >
+                {platformFeeSaving ? "Saving..." : "Save Rate"}
+              </button>
+            </div>
+            {platformFeeLoading && (
+              <p className={styles.platformFeeMeta}>Loading current rate...</p>
+            )}
+            {!platformFeeLoading && platformFeeError && (
+              <p className={styles.platformFeeError}>{platformFeeError}</p>
+            )}
+            {platformFeeSuccess && (
+              <p className={styles.platformFeeSuccess}>{platformFeeSuccess}</p>
+            )}
+          </section>
+
+          {summaryItems.length > 0 && (
+            <section className={styles.summarySection}>
+              {primaryStats.length > 0 && (
+                <div className={styles.summaryHero}>
+                  {primaryStats.map((item) => (
+                    <div
+                      key={item.label}
+                      className={`${styles.summaryHeroCard} ${item.label === 'Platform Revenue' ? styles.summaryHeroRevenue : ''}`}
+                    >
+                      <div className={styles.summaryHeroLabel}>{item.label}</div>
+                      <div className={styles.summaryHeroValue}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {secondaryStats.length > 0 && (
+                <div className={styles.summaryGrid}>
+                  {secondaryStats.map((item) => (
+                    <div key={item.label} className={styles.summaryCard}>
+                      <div className={styles.summaryLabel}>{item.label}</div>
+                      <div className={styles.summaryValue}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
           )}
 

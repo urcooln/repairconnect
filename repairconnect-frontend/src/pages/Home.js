@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import jwtDecode from "jwt-decode";
 import styles from "./Home.module.css";
+import { setToken, removeToken } from '../utils/auth';
 
 const API_BASE = "http://localhost:8081";
 
@@ -42,7 +43,7 @@ function Home() {
       const data = await res.json();
 
       if (res.ok && data.token) {
-        localStorage.setItem("token", data.token);
+        setToken(data.token);
 
         try {
           const decoded = jwtDecode(data.token);
@@ -59,7 +60,7 @@ function Home() {
         } catch (err) {
           console.error("Token decode error:", err);
           setError("Invalid login response");
-          localStorage.removeItem("token");
+          removeToken();
           return;
         }
       }
